@@ -1,0 +1,90 @@
+name: ponydb
+
+services:
+  devcontainer:
+    container_name: ponydb_dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Dev Containers writes Dockerfile-with-features outside the build context.
+      # Compose grants Bake fs.read access to declared additional contexts.
+      additional_contexts:
+        devcontainer_features: ${DEVCONTAINER_FEATURES_CONTEXT:-${TMPDIR:-/tmp}/devcontainercli-${USER}/container-features}
+    working_dir: /workspace
+    networks:
+      default:
+        aliases:
+          - rustfs
+    volumes:
+      - ../../:/workspace:cached
+      - ssh-host-keys:/etc/ssh/host_keys
+      # Compose creates an empty host directory when Cursor CLI is absent.
+      # Override the source for macOS file credentials or a custom XDG path.
+      - type: bind
+        source: ${DEVCONTAINER_CURSOR_CONFIG_DIR:-${HOME:-${USERPROFILE}}/.config/cursor}
+        target: /home/developer/.config/cursor
+        bind:
+          create_host_path: true
+      # Share file-based gh credentials; an absent source is created empty.
+      - type: bind
+        source: ${DEVCONTAINER_GH_CONFIG_DIR:-${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-${HOME:-${USERPROFILE}}/.config}/gh}}
+        target: /home/developer/.config/gh
+        bind:
+          create_host_path: true
+      # Docker socket to access Docker server
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      TZ: Asia/Shanghai
+      AGENT_CLI_CREDENTIAL_STORE: file
+      GH_CONFIG_DIR: /home/developer/.config/gh
+      # Optional host token authentication; empty values allow file fallback.
+      GH_TOKEN: ${GH_TOKEN:-${GITHUB_TOKEN:-}}
+    ports:
+      # Keep SSH stable across restarts; allow a host-specific port override.
+      - target: 22
+        published: "${DEVCONTAINER_SSH_PORT:-22328}"
+        host_ip: ${DEVCONTAINER_SSH_BIND_ADDRESS:-0.0.0.0}
+        protocol: tcp
+    restart: unless-stopped
+    # Required for ptrace-based debuggers like C++, Go, and Rust
+    cap_add:
+      # For debugging with dlv
+      - SYS_PTRACE
+    security_opt:
+      # For debugging with dlv
+      - seccomp:unconfined
+    user: developer
+    command: /usr/local/bin/start-devcontainer
+
+  rustfs:
+    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    container_name: ponydb_rustfs
+    # Share localhost with the devcontainer without publishing RustFS ports.
+    network_mode: service:devcontainer
+    depends_on:
+      - devcontainer
+    command: ["/data"]
+    environment:
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_ACCESS_KEY: rustfsadmin
+      RUSTFS_SECRET_KEY: rustfsadmin
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health && curl -fsS http://127.0.0.1:9001/rustfs/console/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  # RustFS shares the devcontainer's network namespace on this network.
+  default:
+    driver: bridge
+
+volumes:
+  ssh-host-keys:
+  rustfs-data:

@@ -1,0 +1,6 @@
+# This directory is a separate Compose build context.
+# Only these files are needed to build the development image.
+*
+!Dockerfile
+!start.sh
+!sshd_config

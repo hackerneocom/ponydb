@@ -1,0 +1,66 @@
+{
+  "name": "ponydb",
+  "dockerComposeFile": "docker-compose.yml",
+  // Service indicates which service in the docker-compose.yml file is the Dev Container.
+  "service": "devcontainer",
+  "runServices": ["devcontainer", "rustfs"],
+  // Preserve the Compose command that keeps sshd running in the foreground.
+  "overrideCommand": false,
+  "shutdownAction": "none",
+  "mounts": [
+    {
+      "type": "volume",
+      "source": "ponydb-zsh-history",
+      "target": "/home/developer/zsh_history"
+    },
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.ssh",
+      "target": "/home/developer/.ssh"
+    },
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.claude",
+      "target": "/home/developer/.claude"
+    },
+    {
+      "type": "bind",
+      "source": "${localEnv:HOME}/.codex",
+      "target": "/home/developer/.codex"
+    }
+  ],
+  "workspaceFolder": "/workspace/${localWorkspaceFolderBasename}",
+  // Configure tool-specific properties.
+  "customizations": {
+    // Configure properties specific to VS Code.
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "rust-analyzer.checkOnSave": true,
+        "lldb.executable": "/usr/bin/lldb"
+      },
+      "extensions": [
+        "streetsidesoftware.code-spell-checker",
+        "gruntfuggly.todo-tree",
+        "eamodio.gitlens",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "github.copilot",
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "anthropic.claude-code"
+      ]
+    }
+  },
+  "onCreateCommand": {
+    "shell": "sudo chsh -s /bin/zsh $USER"
+  },
+  "postCreateCommand": {
+    "toolVersion": "rustc --version && cargo --version && codex --version && agent --version && gh --version",
+    "gitConfig": "git config --global --add safe.directory '/workspace/*'",
+    "chmodWorkspace": "sudo chmod 1777 /workspace"
+  },
+  "remoteUser": "developer"
+}
