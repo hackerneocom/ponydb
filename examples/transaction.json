@@ -1,0 +1,11 @@
+{
+  "statements": [
+    {
+      "sql": "INSERT INTO notes(id, title) VALUES (?, ?)",
+      "params": [
+        {"type": "text", "value": "note_cli_001"},
+        {"type": "text", "value": "来自 CLI 的笔记"}
+      ]
+    }
+  ]
+}

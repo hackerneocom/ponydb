@@ -1,0 +1,26 @@
+[package]
+name = "versioned-store"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tracing.workspace = true
+observability.workspace = true
+object-store-api.workspace = true
+storage-format.workspace = true
+storage-namespace.workspace = true
+remote-pager.workspace = true
+request-context.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+rusqlite.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+object-store-test-support = { path = "../object-store-test-support" }

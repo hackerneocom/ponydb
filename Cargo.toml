@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = ["crates/*", "apps/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-only"
+rust-version = "1.95"
+
+[workspace.dependencies]
+rusqlite = { version = "=0.41.1", features = ["bundled", "hooks", "extra_check", "limits"] }
+thiserror = "2"
+tempfile = "3"
+remote-pager = { path = "crates/remote-pager" }
+sqlite-vfs = { path = "crates/sqlite-vfs" }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "io-util", "io-std", "signal", "fs"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+crossbeam-channel = "0.5"
+object-store-api = { path = "crates/object-store-api" }
+request-context = { path = "crates/request-context" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+storage-namespace = { path = "crates/storage-namespace" }
+storage-format = { path = "crates/storage-format" }
+versioned-store = { path = "crates/versioned-store" }
+uuid = { version = "1", features = ["v4", "v7"] }
+protocol = { path = "crates/protocol" }
+database-service = { path = "crates/database-service" }
+engine-sqlite = { path = "crates/engine-sqlite" }
+schemars = "1"
+base64 = "0.22"
+runtime-config = { path = "crates/runtime-config" }
+object-store-s3 = { path = "crates/object-store-s3" }
+mcp-server = { path = "crates/mcp-server" }
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "registry"] }
+observability = { path = "crates/observability" }

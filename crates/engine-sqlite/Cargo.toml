@@ -1,0 +1,21 @@
+[package]
+name = "engine-sqlite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tracing.workspace = true
+observability.workspace = true
+rusqlite.workspace = true
+remote-pager.workspace = true
+sqlite-vfs.workspace = true
+thiserror.workspace = true
+
+tokio.workspace = true
+request-context.workspace = true
+crossbeam-channel.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

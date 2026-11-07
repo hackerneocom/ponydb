@@ -1,0 +1,77 @@
+name: Rust
+on: [push, pull_request]
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace
+      - run: cargo run --locked -p engine-sqlite --example diagnostics
+  e2e:
+    name: CLI, server and MCP end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      E2E_ENDPOINT: http://127.0.0.1:9000
+      E2E_BUCKET: ponydb-test
+      E2E_REGION: us-east-1
+      E2E_CLI: ${{ github.workspace }}/target/debug/ponydb
+      ACCESS_KEY: rustfsadmin
+      SECRET_KEY: rustfsadmin
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Start isolated RustFS
+        id: rustfs
+        run: |
+          docker run --detach --name ponydb-e2e-rustfs \
+            --publish 127.0.0.1:9000:9000 \
+            --env RUSTFS_ADDRESS=:9000 \
+            --env RUSTFS_CONSOLE_ENABLE=false \
+            --env RUSTFS_ACCESS_KEY="$ACCESS_KEY" \
+            --env RUSTFS_SECRET_KEY="$SECRET_KEY" \
+            rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2 \
+            /data
+      - name: Wait for storage and create test bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ env.ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ env.SECRET_KEY }}
+          AWS_DEFAULT_REGION: ${{ env.E2E_REGION }}
+          AWS_EC2_METADATA_DISABLED: "true"
+          AWS_PAGER: ""
+        run: |
+          curl --fail --silent --show-error \
+            --retry 30 --retry-connrefused --retry-delay 1 --retry-max-time 90 \
+            --connect-timeout 2 --max-time 5 "$E2E_ENDPOINT/health"
+          aws --endpoint-url "$E2E_ENDPOINT" s3api create-bucket \
+            --bucket "$E2E_BUCKET" --region "$E2E_REGION"
+      - name: Build CLI
+        run: cargo build --locked -p ponydb
+      - name: Run all end-to-end tests
+        timeout-minutes: 10
+        run: python3 tests/cli_e2e.py
+      - name: Show RustFS logs on failure
+        if: ${{ failure() && steps.rustfs.outcome == 'success' }}
+        run: docker logs ponydb-e2e-rustfs
+      - name: Remove RustFS and its temporary volumes
+        if: ${{ always() }}
+        run: docker rm --force --volumes ponydb-e2e-rustfs || true
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t ponydb:ci .
+      - run: docker run --rm ponydb:ci version
+      - run: docker run --rm --entrypoint ponydb ponydb:ci version

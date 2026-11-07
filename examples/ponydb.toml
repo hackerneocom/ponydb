@@ -1,0 +1,133 @@
+# Shared by the native CLI (ponydb) and the service (ponydb server).
+# Only settings that users can adjust and that affect runtime behavior are listed.
+# Uncommented settings are required for S3 access; config show and version work offline.
+# All other settings are commented. Values shown are built-in defaults unless
+# marked as examples.
+# To override a setting, uncomment its section header and assignment together.
+# ponydb server also needs one identity: uncomment [[server.auth.principals]]
+# or set PONYDB_SERVER__AUTH. There is no built-in identity.
+# Every setting supports PONYDB_ environment overrides: __ (or .) separates levels.
+# Scalars use plain text; objects use JSON merged by field; arrays use JSON replacement.
+# Example: PONYDB_ENGINE__WORKER_THREADS=8 or PONYDB_STORAGE='{"bucket":"my-bucket"}'.
+# Parent overrides apply before child fields; duplicate paths are rejected.
+# Relative file paths are resolved against the configuration file's directory.
+
+# Required to access S3: endpoint and bucket. Other storage settings are optional.
+[storage]
+# Required: S3-compatible API endpoint URL. Default: "" (must be supplied for S3 access).
+endpoint = "https://<s3-endpoint>"
+# Required: S3 bucket holding database objects. Default: "" (must be supplied for S3 access).
+bucket = "serverless-db"
+# S3 signing region. Default: "us-east-1".
+# region = "us-east-1"
+# Force path-style addressing (MinIO). Default: true; set false for virtual-hosted-style (OSS).
+# force_path_style = true
+# Object-key prefix within the bucket. Default: "" (no prefix).
+# prefix = ""
+
+# Required S3 credentials. access_key_id and secret_access_key have no usable default.
+[storage.credentials]
+# Required for S3 access. Default: ""; override with PONYDB_STORAGE__CREDENTIALS__ACCESS_KEY_ID.
+access_key_id = "<access-key-id>"
+# Required for S3 access. Default: ""; override with PONYDB_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY.
+secret_access_key = "<secret-access-key>"
+# Optional temporary-credential token. Default: unset.
+# Override with PONYDB_STORAGE__CREDENTIALS__SESSION_TOKEN.
+# Example (no token is configured by default):
+# session_token = "<session-token>"
+
+# Required for ponydb server only. Commented so the example does not install an identity.
+# Uncomment this block, or set PONYDB_SERVER__AUTH to the complete JSON object.
+# There is no built-in identity. A token must be at least 16 bytes.
+# Example (the default principals array is empty):
+# [[server.auth.principals]]
+# id = "admin"
+# token = "replace-with-a-long-random-token"
+# databases = ["*"]
+# scopes = ["*"]
+
+# [server]
+# Server bind IP address and port (used by ponydb server). Default: "127.0.0.1:8080".
+# listen = "127.0.0.1:8080"
+
+# Optional sections.
+# [engine]
+# Number of SQLite worker threads. Default: 4; allowed range: 1..64.
+# worker_threads = 4
+# Maximum queued execution requests. Default: 64; allowed range: 1..100000.
+# max_queued_requests = 64
+
+# [cache]
+# Total SQLite memory-cache budget in MiB, shared among workers. Default: 256.
+# memory_budget_mib = 256
+# Persistent cache body budget in MiB. Default: 2048; 0 disables disk caching.
+# disk_budget_mib = 2048
+# Storage segment size in KiB. Default: 256; allowed values: 64, 128, 256, 512, 1024.
+# segment_size_kib = 256
+# Persistent cache directory override. Default: operating-system user cache directory.
+# Example (not the default directory):
+# directory = "./cache"
+
+# [runtime]
+# Local execution storage budget in MiB. Default: 2048.
+# work_disk_budget_mib = 2048
+
+# [transactions]
+# Maximum dirty SQLite bytes per execution. Default: 16777216 (16 MiB).
+# max_dirty_bytes = 16777216
+# Maximum statements per transaction. Default: 100.
+# max_statements = 100
+
+# [query]
+# Default and maximum rows in a query result. Default: 1000.
+# max_rows = 1000
+# Maximum serialized result size in bytes. Default: 1048576 (1 MiB).
+# max_result_bytes = 1048576
+
+# [requests]
+# Default request timeout in milliseconds. Default: 90000; must not exceed max_timeout_ms.
+# Does not apply to file restore, which has no total execution deadline.
+# default_timeout_ms = 90000
+# Configured request timeout ceiling in milliseconds. Default: 1800000 (30 minutes).
+# max_timeout_ms = 1800000
+
+# [maintenance]
+# Default online GC work budget in milliseconds; explicit calls may use up to requests.max_timeout_ms.
+# gc_default_budget_ms = 60000
+# Maximum read duration in milliseconds, used to protect reads during GC. Default: 10000.
+# max_read_duration_ms = 10000
+# Overlay size ceiling in bytes before writes require explicit compaction. Default: 67108864 (64 MiB).
+# overlay_hard_limit_bytes = 67108864
+# Configured maximum objects processed per garbage-collection call. Default: 1000.
+# gc_max_objects_per_call = 1000
+
+# [snapshots]
+# Snapshot history retention period in days. Default: 7.
+# retention_days = 7
+# Maximum retained history entries. Default: 1000000.
+# max_retained_snapshots = 1000000
+
+# [exports]
+# Positive per-file snapshot export limit in bytes. Default: 10737418240 (10 GiB).
+# Temporary disk required per concurrent export; read leases still apply.
+# max_file_bytes = 10737418240
+
+# [mcp]
+# Enable the server's MCP endpoint (used by ponydb server). Default: true.
+# enabled = true
+
+# [cli]
+# CLI result format (ignored by the server). Default: "json"; allowed values: "json", "table".
+# output = "json"
+
+# [logging]
+# Log verbosity shared by CLI, HTTP and MCP. Default: "warn".
+# Allowed values: "trace", "debug", "info", "warn", "error".
+# Set "debug" for key phases, timings and request-level I/O/cache totals.
+# Set "trace" for per-page reads/writes, S3 calls (including object keys) and cache details.
+# level = "warn"
+# Diagnostic format. Default: "json"; allowed values: "json", "text".
+# Logs always go to stderr; stdout remains business output or MCP protocol messages.
+# format = "json"
+# SQL, parameters, result contents, credentials and tokens are never logged.
+# Environment overrides: PONYDB_LOGGING__LEVEL and PONYDB_LOGGING__FORMAT.

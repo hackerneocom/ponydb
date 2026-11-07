@@ -1,0 +1,36 @@
+[package]
+name = "ponydb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+storage-format.workspace = true
+tracing-subscriber.workspace = true
+tracing.workspace = true
+observability.workspace = true
+tempfile.workspace = true
+clap.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+protocol.workspace = true
+database-service.workspace = true
+runtime-config.workspace = true
+object-store-s3.workspace = true
+request-context.workspace = true
+engine-sqlite.workspace = true
+mcp-server.workspace = true
+
+axum.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+object-store-api.workspace = true
+url = "2"
+uuid.workspace = true
+
+[dev-dependencies]
+sha2.workspace = true
+rusqlite.workspace = true
+object-store-test-support = { path = "../../crates/object-store-test-support" }
+tower = { version = "0.5", features = ["util"] }
