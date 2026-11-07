@@ -4,6 +4,7 @@ Read when writing, editing, or reviewing documentation.
 
 ## Scope and document structure
 
+- Except for implementation plans, documentation should describe the current state of the code by default. Record change history only in documents dedicated to that purpose.
 - Store documentation intended for AI agents in `docs/agents/`. Use root or directory-scoped `AGENTS.md` files as entry points linking to the relevant references.
 - Keep human-facing documentation focused on how to use the project. Do not include implementation details; put agent-facing implementation guidance in `docs/agents/`.
 

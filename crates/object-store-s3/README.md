@@ -1,0 +1,39 @@
+**English** | [中文](README.zh-CN.md)
+
+# object-store-s3
+
+S3 implementation of `object-store-api::BlobStore`. Conditional puts are the only writes, and the AWS SDK is not allowed to retry them.
+
+## Purpose
+
+ponydb treats S3 as the source of truth. `head.json` moves forward only with `If-Match`. Immutable pages and metadata appear only with `If-None-Match: *`. If a successful put response is lost, an automatic SDK retry could observe the object it just created and report a precondition failure. That would hide a committed write, so write retries are disabled and the outcome stays `Unknown` until the caller reconciles.
+
+## How it works
+
+`S3Store::new` accepts an `http` or `https` endpoint with no username, password, query, fragment, or extra path. Addressing follows `S3Config::force_path_style`. The bucket name is lowercase letters, digits, `-`, and `.`. The configured prefix is appended to every key and is included in the revision scope, whose identity is `endpoint|bucket|prefix`. Keys that contain empty segments, `.`, `..`, or characters outside a small ASCII set are rejected before a request is sent.
+
+A revision token is the object ETag, wrapped by `RevisionScope`. `compare_and_swap` decodes that token and sends `PutObject` with `If-Match`. `create_if_absent` sends the same put with `If-None-Match: *`. Each put also sets the SHA-256 checksum header and a `sha256` user-metadata value. The SDK retry policy is one attempt, and the operation timeout is the configured timeout.
+
+`classify_write` maps the HTTP result:
+
+| Status | Outcome |
+| --- | --- |
+| 412 | `PreconditionFailed` |
+| 401, 403 | `NotApplied(AccessDenied)` |
+| 429 | `NotApplied(Throttled)`, retryable |
+| 400, 404, 405, 411, 413, 416, 422 | `NotApplied(InvalidInput)` |
+| anything else, including 409, 5xx, timeout, and dispatch failure | `Unknown` |
+
+A construction failure is `NotApplied` because the request never left the client.
+
+`read_current` checks the content length, requires `sha256` metadata, and hashes the body before returning it with the unchanged object ETag and the opaque ETag revision. `read_range` sends an HTTP Range and accepts the body only when `Content-Range` starts with the requested bounds and the length matches. Listing uses `ListObjectsV2`. The continuation cursor is JSON that repeats the scope id, prefix, and delimiter; a cursor from another query is `InvalidInput`. `delete` removes one key and classifies transport failures as `Unknown` when the outcome cannot be known.
+
+`S3Config::max_object_bytes` is the capability limit (the runtime config currently passes 8 MiB). Live contract tests in `tests/live.rs` are ignored unless `P0_S3_ENDPOINT` and AWS credentials are set.
+
+Object storage errors use the shared JSON error fields and business error codes. When available, `message` includes the S3 operation, HTTP status, provider error code and provider message, for example `S3 ListObjectsV2 failed (HTTP 403, SecondLevelDomainForbidden): Please use virtual hosted style to access.` Configured access keys, secret keys and session tokens are replaced with `[REDACTED]`; control characters become spaces, and provider codes/messages are limited to 128/1024 characters plus an ellipsis. This minimal redaction does not hide all resource information echoed by the provider. Request/response headers, raw response bodies and SDK error chains are not included. Remote HTTP errors are retryable for 408, 429 and 5xx; other statuses are not retryable. Not-found, conditional-write and uncertain-commit handling takes precedence. CLI, HTTP and MCP share these diagnostics.
+
+`storage.force_path_style` defaults to `true`, preserving path-style addressing for MinIO. Set it to `false` for virtual-hosted-style addressing required by OSS; keep the regional endpoint (for example `https://oss-cn-beijing.aliyuncs.com`) and bucket as separate settings. The SDK constructs the bucket hostname. Environment override: `PONYDB_STORAGE__FORCE_PATH_STYLE=false`. The value must be a boolean.
+
+## Runtime diagnostics
+
+Trace emits one completion event per adapter call: operation, actual prefixed key (LIST prefix), observed HTTP status, outcome, confirmed byte count and elapsed time. It does not format SDK requests, responses, headers, error messages or checksums. Numeric HTTP status is observed through a read-only SDK interceptor. Libraries do not install a global subscriber.
