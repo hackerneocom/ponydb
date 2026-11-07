@@ -1022,6 +1022,13 @@ async fn config_command(
 }
 #[tokio::main]
 async fn main() {
+    // Tokio polls its entry future on the OS main thread. Run the CLI on a
+    // runtime worker so nested SQL/S3 calls have the worker's stack budget,
+    // including on Windows where the main-thread stack is smaller.
+    tokio::spawn(run_cli()).await.expect("CLI task failed");
+}
+
+async fn run_cli() {
     let args = parse_cli(std::env::args_os()).unwrap_or_else(|error| error.exit());
     let is_streaming = matches!(args.command, Command::Mcp | Command::Server { .. });
     let mut output = args.output.clone();

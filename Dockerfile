@@ -1,7 +1,18 @@
 # syntax=docker/dockerfile:1
 # Multi-stage build; produces an image for the build platform's CPU architecture.
-FROM rust:1.95-bookworm AS build
+FROM rust:1.95-bookworm AS chef
+RUN cargo install --locked --version 0.1.78 cargo-chef
 WORKDIR /src
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS build
+# The recipe includes workspace manifests, Cargo.lock, and .cargo/config.toml.
+COPY --from=planner /src/recipe.json recipe.json
+# Keep dependency artifacts in a layer exported by the CI cache with mode=max.
+RUN cargo chef cook --locked --release -p ponydb --recipe-path recipe.json
 COPY . .
 RUN cargo build --locked --release -p ponydb
 

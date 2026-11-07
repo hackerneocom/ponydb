@@ -266,7 +266,13 @@ async fn start(fault: Fault) -> (String, Arc<Mock>, tokio::task::JoinHandle<()>)
     (endpoint, state, server)
 }
 fn command(endpoint: &str, directory: &std::path::Path) -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ponydb"));
+    configured_command(
+        Command::new(env!("CARGO_BIN_EXE_ponydb")),
+        endpoint,
+        directory,
+    )
+}
+fn configured_command(mut cmd: Command, endpoint: &str, directory: &std::path::Path) -> Command {
     for (key, _) in std::env::vars().filter(|(key, _)| key.starts_with("PONYDB_")) {
         cmd.env_remove(key);
     }
@@ -297,6 +303,44 @@ scopes = ["*"]
     cmd.arg("--config").arg(file);
     cmd
 }
+
+// Linux can reproduce the Windows main-thread stack budget without a Windows
+// runner. Use a child shell so the limit never changes the test runner's stack.
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn cli_sql_runs_with_a_one_mib_main_stack() {
+    let (endpoint, _, server) = start(Fault::None).await;
+    let directory = tempfile::tempdir().unwrap();
+    let batch = directory.path().join("batch.json");
+    std::fs::write(
+        &batch,
+        r#"{"statements":[{"sql":"CREATE TABLE t(x)"},{"sql":"INSERT INTO t VALUES(42)"}]}"#,
+    )
+    .unwrap();
+    for args in [
+        vec!["databases", "create", "notes"],
+        vec!["db", "notes", "execute", "--input", batch.to_str().unwrap()],
+        vec!["db", "notes", "execute", "SELECT x FROM t"],
+        vec!["db", "notes", "schema"],
+    ] {
+        let mut shell = Command::new("sh");
+        shell
+            .args(["-c", "ulimit -s 1024 && exec \"$@\"", "ponydb-small-stack"])
+            .arg(env!("CARGO_BIN_EXE_ponydb"));
+        let mut cmd = configured_command(shell, &endpoint, directory.path());
+        cmd.env("RUST_MIN_STACK", "2097152").args(&args);
+        let output = tokio::task::spawn_blocking(move || cmd.output().unwrap())
+            .await
+            .unwrap();
+        assert!(output.status.success(), "{args:?}: {output:?}");
+        let result: Value = serde_json::from_slice(&output.stdout).unwrap();
+        if args.last() == Some(&"SELECT x FROM t") {
+            assert_eq!(result["results"][0]["rows"][0][0]["value"], "42");
+        }
+    }
+    server.abort();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn database_etag_is_the_s3_etag_from_one_head_read() {
     let (endpoint, state, server) = start(Fault::None).await;

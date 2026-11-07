@@ -1,17 +1,24 @@
 name: Rust
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
 jobs:
   check:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-26.04, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.95.0
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace
       - run: cargo run --locked -p engine-sqlite --example diagnostics
@@ -28,9 +35,13 @@ jobs:
       SECRET_KEY: rustfsadmin
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.95.0
-      - uses: actions/setup-python@v5
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ubuntu-24.04
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Start isolated RustFS
@@ -69,9 +80,19 @@ jobs:
         if: ${{ always() }}
         run: docker rm --force --volumes ponydb-e2e-rustfs || true
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t ponydb:ci .
+      - uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ponydb:ci
+          cache-from: type=gha,scope=ponydb-docker
+          cache-to: type=gha,scope=ponydb-docker,mode=max
       - run: docker run --rm ponydb:ci version
       - run: docker run --rm --entrypoint ponydb ponydb:ci version

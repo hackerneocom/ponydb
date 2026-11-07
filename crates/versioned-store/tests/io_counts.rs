@@ -508,7 +508,7 @@ async fn cache_isolates_incarnations_and_rejects_paths_before_io() {
                 Some(old.clone()),
                 BTreeMap::from([("a".into(), Some(Value::Null))]),
                 IndexWriteTarget {
-                    incarnation: incarnation,
+                    incarnation,
                     epoch,
                     category
                 },

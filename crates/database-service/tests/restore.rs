@@ -223,26 +223,26 @@ async fn multiple_page_sizes_short_final_segment_and_no_staging_or_downloads() {
                 .count(),
             1
         );
-        let observed = stages.lock().unwrap();
-        let complete = observed
-            .iter()
-            .position(|p| p.stage == RestoreStage::Complete)
-            .unwrap();
-        let publish = observed
-            .iter()
-            .position(|p| p.stage == RestoreStage::Publishing)
-            .unwrap();
-        assert!(complete > publish);
-        assert_eq!(
-            observed
+        {
+            let observed = stages.lock().unwrap();
+            let complete = observed
                 .iter()
-                .filter(|p| p.stage == RestoreStage::Uploading)
-                .last()
-                .unwrap()
-                .completed_bytes,
-            source.len() as u64
-        );
-        drop(observed);
+                .position(|p| p.stage == RestoreStage::Complete)
+                .unwrap();
+            let publish = observed
+                .iter()
+                .position(|p| p.stage == RestoreStage::Publishing)
+                .unwrap();
+            assert!(complete > publish);
+            assert_eq!(
+                observed
+                    .iter()
+                    .rfind(|p| p.stage == RestoreStage::Uploading)
+                    .unwrap()
+                    .completed_bytes,
+                source.len() as u64
+            );
+        }
         let query = call(
             &s,
             "sql_execute",
