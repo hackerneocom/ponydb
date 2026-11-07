@@ -251,8 +251,7 @@ Restarting the existing container does not apply the new port.
 
 The port is published on all host interfaces by default. Anyone who can reach it
 can log in as `developer` and use this container's passwordless sudo. The container
-also mounts the Docker socket and the host `~/.ssh` directory. For local-only use,
-bind it to `127.0.0.1`.
+also mounts the host `~/.ssh` directory. For local-only use, bind it to `127.0.0.1`.
 
 After the container starts, confirm the mapping from the repository root:
 

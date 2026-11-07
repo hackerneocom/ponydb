@@ -31,8 +31,6 @@ services:
         target: /home/developer/.config/gh
         bind:
           create_host_path: true
-      # Docker socket to access Docker server
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       TZ: Asia/Shanghai
       AGENT_CLI_CREDENTIAL_STORE: file
