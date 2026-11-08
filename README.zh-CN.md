@@ -343,14 +343,14 @@ curl --fail-with-body \
 `ponydb server`：
 
 ```sh
-docker pull ghcr.io/hackerneocom/ponydb:0.1.0
+docker pull ghcr.io/hackerneocom/ponydb:0.1.1
 docker run --rm -p 127.0.0.1:8080:8080 \
   --mount "type=bind,source=$PWD/ponydb.toml,target=/config/ponydb.toml,readonly" \
   -e PONYDB_SERVER__LISTEN=0.0.0.0:8080 \
-  ghcr.io/hackerneocom/ponydb:0.1.0 server --config /config/ponydb.toml
+  ghcr.io/hackerneocom/ponydb:0.1.1 server --config /config/ponydb.toml
 ```
 
-将 `0.1.0` 替换为所需版本；使用对应 digest 可固定镜像内容。Docker Hub 镜像地址
+将 `0.1.1` 替换为所需版本；使用对应 digest 可固定镜像内容。Docker Hub 镜像地址
 见 Release 说明。本地构建可执行 `docker build -t ponydb .`，并把上述镜像名换为
 `ponydb`。
 

@@ -16,5 +16,6 @@ Read when writing, editing, or reviewing documentation.
 ## Keeping documentation current
 
 - When behavior or interfaces change, update the corresponding English and Chinese READMEs, affected design documents, callers, and tests.
+- When changing release versions or versioned examples, follow the repository-wide documentation audit in [Release guidance](releases.md#version-and-documentation-updates).
 - Changes confined to agent guidance do not require rewriting product documentation.
 - Keep agent entry points short and task-specific details in linked references. Prefer links to existing documentation and code over copied examples or directory listings.

@@ -344,14 +344,14 @@ Use a published image, or build from the repository root. The image supports Lin
 amd64/arm64 and starts `ponydb server` by default:
 
 ```sh
-docker pull ghcr.io/hackerneocom/ponydb:0.1.0
+docker pull ghcr.io/hackerneocom/ponydb:0.1.1
 docker run --rm -p 127.0.0.1:8080:8080 \
   --mount "type=bind,source=$PWD/ponydb.toml,target=/config/ponydb.toml,readonly" \
   -e PONYDB_SERVER__LISTEN=0.0.0.0:8080 \
-  ghcr.io/hackerneocom/ponydb:0.1.0 server --config /config/ponydb.toml
+  ghcr.io/hackerneocom/ponydb:0.1.1 server --config /config/ponydb.toml
 ```
 
-Replace `0.1.0` with your release version; use its digest to pin an exact image.
+Replace `0.1.1` with your release version; use its digest to pin an exact image.
 Docker Hub mirror addresses are listed in release notes. For a local source build,
 use `docker build -t ponydb .` and substitute `ponydb` in the command above.
 
