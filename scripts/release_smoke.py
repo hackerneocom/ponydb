@@ -97,6 +97,7 @@ def certificates(directory):
     key, csr, cert = directory / 'server.key', directory / 'server.csr', directory / 'server.pem'
     run('openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
         '-subj', '/CN=ponydb-release-test-ca', '-addext', 'basicConstraints=critical,CA:TRUE',
+        '-addext', 'keyUsage=critical,keyCertSign,cRLSign',
         '-keyout', ca_key, '-out', ca, stderr=subprocess.DEVNULL)
     run('openssl', 'req', '-newkey', 'rsa:2048', '-nodes', '-subj', '/CN=release-tls',
         '-keyout', key, '-out', csr, stderr=subprocess.DEVNULL)

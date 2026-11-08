@@ -51,8 +51,10 @@ class TlsFixtureTests(unittest.TestCase):
     def test_https_proxy_preserves_signed_host_and_upload_body(self):
         with tempfile.TemporaryDirectory() as temporary, backend() as fixture:
             with tls_proxy(fixture, Path(temporary)) as (ca, port):
+                context = ssl.create_default_context(cafile=str(ca))
+                context.verify_flags |= ssl.VERIFY_X509_STRICT
                 connection = http.client.HTTPSConnection('localhost', port,
-                                                         context=ssl.create_default_context(cafile=str(ca)), timeout=5)
+                                                         context=context, timeout=5)
                 try:
                     connection.request('PUT', '/bucket/key', body=b'payload',
                                        headers={'Authorization': 'signed-request'})
@@ -67,6 +69,7 @@ class TlsFixtureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary, backend() as fixture:
             with tls_proxy(fixture, Path(temporary)) as (ca, port):
                 context = ssl.create_default_context(cafile=str(ca))
+                context.verify_flags |= ssl.VERIFY_X509_STRICT
                 connection = http.client.HTTPSConnection('localhost', port, context=context, timeout=5)
                 try:
                     connection.request('PUT', '/bucket/key', body=iter([b'part1', b'part2']), encode_chunked=True)
