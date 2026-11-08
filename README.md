@@ -8,7 +8,12 @@ Create databases, run parameterized SQL and atomic transactions, inspect snapsho
 
 ## Install
 
-From the repository root, with Rust 1.95 installed:
+Download a precompiled CLI package from [GitHub Releases](https://github.com/hackerneocom/ponydb/releases).
+Linux x86_64/ARM64, macOS Intel/Apple Silicon, and Windows x86_64 packages are
+available through the release workflow. See the [installation and release guide](docs/releases.md)
+for package selection, SHA256 verification, compatibility, and container image tags.
+
+To build from source, run from the repository root with Rust 1.95 installed:
 
 ```sh
 cargo install --locked --path apps/cli
@@ -335,15 +340,20 @@ curl --fail-with-body \
 
 ### Docker
 
-Build from the repository root. The image starts `ponydb server` by default:
+Use a published image, or build from the repository root. The image supports Linux
+amd64/arm64 and starts `ponydb server` by default:
 
 ```sh
-docker build -t ponydb .
+docker pull ghcr.io/hackerneocom/ponydb:0.1.0
 docker run --rm -p 127.0.0.1:8080:8080 \
   --mount "type=bind,source=$PWD/ponydb.toml,target=/config/ponydb.toml,readonly" \
   -e PONYDB_SERVER__LISTEN=0.0.0.0:8080 \
-  ponydb server --config /config/ponydb.toml
+  ghcr.io/hackerneocom/ponydb:0.1.0 server --config /config/ponydb.toml
 ```
+
+Replace `0.1.0` with your release version; use its digest to pin an exact image.
+Docker Hub mirror addresses are listed in release notes. For a local source build,
+use `docker build -t ponydb .` and substitute `ponydb` in the command above.
 
 The mounted configuration must contain S3 credentials and a server principal, be readable by the container's unprivileged user, and use an S3 endpoint reachable from inside the container. `localhost` in that file refers to the container itself. To supply credentials or authentication from the host environment, add `-e PONYDB_STORAGE__CREDENTIALS__ACCESS_KEY_ID`, `-e PONYDB_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY`, optional `-e PONYDB_STORAGE__CREDENTIALS__SESSION_TOKEN`, and `-e PONYDB_SERVER__AUTH` as needed. Binding to `0.0.0.0` inside the container allows port forwarding; the example publishes the port on the host's loopback address.
 

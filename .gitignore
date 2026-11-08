@@ -1,4 +1,7 @@
 /target/
+/release-assets/
+/release-binaries/
+__pycache__/
 
 # Local environment files; keep credential-free templates available.
 .env

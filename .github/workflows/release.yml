@@ -1,0 +1,370 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish/resume; blank uses selected ref for a dry run'
+        type: string
+        default: ''
+      dry_run:
+        description: 'Build and test without creating a release or pushing images'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Serialize publication, including floating tag updates. Never interrupt a publisher.
+concurrency:
+  group: ponydb-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.prepare.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      commit: ${{ steps.prepare.outputs.commit }}
+      dry_run: ${{ steps.prepare.outputs.dry_run }}
+      asset_names: ${{ steps.prepare.outputs.asset_names }}
+      ghcr: ${{ steps.prepare.outputs.ghcr }}
+      dockerhub: ${{ steps.prepare.outputs.dockerhub }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+      - name: Validate release identity
+        id: prepare
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
+        run: |
+          args=()
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          python3 scripts/release.py prepare --tag "$RELEASE_TAG" "${args[@]}"
+
+  discover:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      reuse: ${{ steps.discover.outputs.reuse || 'false' }}
+      published: ${{ steps.discover.outputs.published || 'false' }}
+    steps:
+      # Draft discovery needs push access. Run only API queries, never tag code.
+      - name: Find the release checkpoint
+        id: discover
+        if: needs.prepare.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          REQUIRED_ASSETS: ${{ needs.prepare.outputs.asset_names }}
+        run: |
+          states="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | {tag_name, draft, assets: [.assets[].name]}')"
+          state="$(jq -cs --arg tag "$TAG" \
+            'map(select(.tag_name == $tag)) | if length > 1 then error("Duplicate release tag") else .[0] end' <<< "$states")"
+          reuse="$(jq --argjson required "$REQUIRED_ASSETS" \
+            '($required - (.assets // []) | length) == 0' <<< "$state")"
+          published="$(jq '. != null and .draft == false' <<< "$state")"
+          if [ "$published" = true ] && [ "$reuse" != true ]; then
+            echo 'Published release is missing its release checkpoint' >&2
+            exit 1
+          fi
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: [prepare, discover]
+    if: needs.discover.outputs.published != 'true'
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.prepare.outputs.commit }}
+
+  build:
+    needs: [prepare, discover]
+    if: needs.discover.outputs.reuse != 'true' && needs.discover.outputs.published != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Install musl and native build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools build-essential cmake perl
+      - name: Build release binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python scripts/release.py build --target "$TARGET"
+      - name: Package and check static linkage
+        id: package
+        env:
+          TARGET: ${{ matrix.target }}
+        run: python scripts/release.py pack --target "$TARGET"
+      - name: Test the unpacked CLI
+        env:
+          E2E_CLI: ${{ steps.package.outputs.binary }}
+        run: python tests/cli_e2e.py --offline
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+        if: runner.os == 'Linux'
+      - name: Test musl, TLS, S3, and the release container
+        if: runner.os == 'Linux'
+        timeout-minutes: 25
+        env:
+          RELEASE_BINARY: ${{ steps.package.outputs.binary }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+        run: |
+          python3 scripts/release_smoke.py linux --binary "$RELEASE_BINARY" \
+            --version "$RELEASE_VERSION" --commit "$RELEASE_COMMIT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cli-${{ matrix.target }}
+          path: |
+            release-assets/ponydb-*.tar.gz
+            release-assets/ponydb-*.zip
+            release-assets/build-*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  dry-run:
+    needs: [prepare, ci, build]
+    if: needs.prepare.outputs.dry_run == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: release-assets
+      - name: Verify all packages and assemble the binary build context
+        env:
+          GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr }}
+          DOCKERHUB_IMAGE: ${{ needs.prepare.outputs.dockerhub }}
+        run: python3 scripts/release.py assemble
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build the complete OCI index without publishing
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          REVISION: ${{ needs.prepare.outputs.commit }}
+        run: |
+          docker buildx build --platform linux/amd64,linux/arm64 --target release \
+            --build-context binaries=./release-binaries \
+            --build-arg VERSION="$VERSION" --build-arg REVISION="$REVISION" \
+            --provenance mode=max --output type=oci,dest=release-assets/ponydb-image.tar .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-dry-run
+          path: |
+            release-assets/ponydb-image.tar
+            release-assets/SHA256SUMS
+            release-assets/release-metadata.json
+          retention-days: 7
+
+  stage:
+    needs: [prepare, discover, ci, build]
+    if: >-
+      always() && !failure() && !cancelled() &&
+      needs.prepare.outputs.dry_run == 'false' && needs.discover.outputs.published == 'false' &&
+      needs.ci.result == 'success' &&
+      (needs.build.result == 'success' || needs.discover.outputs.reuse == 'true')
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+    outputs:
+      digest: ${{ steps.candidate.outputs.digest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr }}
+      DOCKERHUB_IMAGE: ${{ needs.prepare.outputs.dockerhub }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Check Docker Hub credentials
+        env:
+          HUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: test -n "$HUB_USERNAME" && test -n "$HUB_TOKEN"
+      - name: Recheck the current recovery checkpoint
+        id: recovery
+        run: python3 scripts/release.py recovery
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        if: steps.recovery.outputs.reuse != 'true'
+        with:
+          pattern: cli-*
+          merge-multiple: true
+          path: release-assets
+      - name: Assemble or restore the release checkpoint
+        env:
+          REUSE: ${{ steps.recovery.outputs.reuse }}
+        run: |
+          args=()
+          if [ "$REUSE" = true ]; then args+=(--restore); fi
+          python3 scripts/release.py assemble "${args[@]}"
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: |
+            release-assets/ponydb-*.tar.gz
+            release-assets/ponydb-*.zip
+      - name: Checkpoint verified CLI packages in the draft
+        run: python3 scripts/release.py draft
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Install registry copy tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Build once and copy the same index to Docker Hub
+        id: candidate
+        run: python3 scripts/release.py candidate
+      - name: Pass the candidate checkpoint to image verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-image-checkpoint
+          path: release-assets/release-metadata.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  verify-images:
+    needs: [prepare, stage]
+    if: ${{ !cancelled() && !failure() && needs.stage.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Restore the expected binary checksums
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-image-checkpoint
+      - name: Pull anonymously and test both registries on native hardware
+        run: python3 scripts/release_smoke.py registries --metadata release-metadata.json
+
+  publish:
+    needs: [prepare, stage, verify-images]
+    if: >-
+      !cancelled() && !failure() && needs.stage.result == 'success' &&
+      needs.verify-images.result == 'success'
+    environment: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr }}
+      DOCKERHUB_IMAGE: ${{ needs.prepare.outputs.dockerhub }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Restore the tested checkpoint
+        run: python3 scripts/release.py assemble --restore
+      - name: Install registry copy tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Promote exact version tags and aliases, then publish the release
+        run: python3 scripts/release.py promote
+
+  verify-published:
+    needs: [prepare, discover]
+    if: needs.discover.outputs.published == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+          persist-credentials: false
+      - name: Install registry inspection tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes skopeo
+      - name: Verify the published release without modifying it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GHCR_IMAGE: ${{ needs.prepare.outputs.ghcr }}
+          DOCKERHUB_IMAGE: ${{ needs.prepare.outputs.dockerhub }}
+        run: python3 scripts/release.py published

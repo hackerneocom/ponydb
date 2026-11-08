@@ -2,6 +2,9 @@ target/
 .git/
 .github/
 .devcontainer/
+release-assets/
+release-binaries/
+**/__pycache__/
 *.md
 !README.md
 
