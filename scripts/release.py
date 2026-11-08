@@ -99,7 +99,33 @@ def github(path):
 
 
 def release(tag):
-    return github('releases/tags/' + tag)
+    # The tag endpoint only returns published releases. Listing also finds drafts
+    # when called with a token that has push access.
+    page = 1
+    while True:
+        states = github(f'releases?per_page=100&page={page}')
+        require(states is not None, 'Cannot list repository releases')
+        for state in states:
+            if state['tag_name'] == tag:
+                return state
+        if len(states) < 100:
+            return None
+        page += 1
+
+
+def checkpoint_names(version):
+    return {archive_name(version, target) for target in TARGETS} | {'release-metadata.json', 'SHA256SUMS'}
+
+
+def has_checkpoint(state, version):
+    return bool(state and checkpoint_names(version) <= {asset['name'] for asset in state['assets']})
+
+
+def recovery(args):
+    version = workspace_version()
+    state = release('v' + version)
+    require(not state or state['draft'], 'Cannot modify an already published release')
+    output(reuse=has_checkpoint(state, version))
 
 
 def download(tag, directory, patterns):
@@ -137,21 +163,8 @@ def prepare(args):
             'Configure DOCKERHUB_NAMESPACE before publishing')
     images = {'ghcr': 'ghcr.io/' + REPOSITORY,
               'dockerhub': 'docker.io/' + (namespace or 'dry-run') + '/ponydb'}
-    state = None if args.dry_run else release(tag)
-    reusable = False
-    if state:
-        assets = {asset['name'] for asset in state['assets']}
-        required = {archive_name(version, target) for target in TARGETS}
-        reusable = required | {'release-metadata.json', 'SHA256SUMS'} <= assets
-        if reusable:
-            with tempfile.TemporaryDirectory() as temporary:
-                directory = Path(temporary)
-                download(tag, directory, ['release-metadata.json'])
-                validate_metadata(json.loads((directory / 'release-metadata.json').read_text()),
-                                  version, commit, images)
-        require(state['draft'] or reusable, 'Published release is missing its release checkpoint')
     output(version=version, tag=tag, commit=commit, prerelease='-' in version,
-           dry_run=args.dry_run, reuse=reusable, published=bool(state and not state['draft']),
+           dry_run=args.dry_run, asset_names=json.dumps(sorted(checkpoint_names(version))),
            ghcr=images['ghcr'], dockerhub=images['dockerhub'])
 
 
@@ -337,7 +350,7 @@ def draft(args):
             run('gh', 'release', 'create', metadata['tag'], '--repo', REPOSITORY, '--verify-tag',
                 '--draft', '--title', metadata['tag'], '--notes-file', path)
         state = release(metadata['tag'])
-    require(state['draft'], 'Cannot modify an already published release')
+    require(state and state['draft'], 'Release draft is missing or already published')
     existing = {asset['name'] for asset in state['assets']}
     for name in [entry['archive'] for entry in metadata['artifacts']] + ['SHA256SUMS']:
         if name in existing:
@@ -511,6 +524,7 @@ def main():
         if name == 'assemble':
             command.add_argument('--restore', action='store_true')
     commands.add_parser('published')
+    commands.add_parser('recovery')
     args = parser.parse_args()
     globals()[args.command](args)
 

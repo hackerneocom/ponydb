@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.error
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'scripts'))
@@ -72,6 +73,31 @@ class VersionTests(unittest.TestCase):
             release.alias_allowed('1.2.0', '1.3.0-rc.1')
 
 
+class ReleaseLookupTests(unittest.TestCase):
+    def test_finds_drafts_and_published_releases_on_later_pages(self):
+        for draft in (True, False):
+            state = {'tag_name': 'v0.1.0', 'draft': draft, 'assets': []}
+            pages = [[{'tag_name': 'v9.9.9'}] * 100, [state]]
+            responses = [io.BytesIO(json.dumps(page).encode()) for page in pages]
+            with self.subTest(draft=draft), patch.dict(os.environ, {'GH_TOKEN': 'fixture-token'}), \
+                    patch.object(release.urllib.request, 'urlopen', side_effect=responses) as api:
+                self.assertEqual(release.release('v0.1.0'), state)
+                self.assertEqual([call.args[0].full_url for call in api.call_args_list], [
+                    f'https://api.github.com/repos/{release.REPOSITORY}/releases?per_page=100&page={page}'
+                    for page in (1, 2)])
+
+    def test_missing_release_differs_from_api_failure(self):
+        with patch.dict(os.environ, {'GH_TOKEN': 'fixture-token'}):
+            with patch.object(release.urllib.request, 'urlopen', return_value=io.BytesIO(b'[]')):
+                self.assertIsNone(release.release('v0.1.0'))
+            for status in (403, 404, 500):
+                error = urllib.error.HTTPError('https://api.github.com', status, 'API failure', {}, None)
+                with self.subTest(status=status), \
+                        patch.object(release.urllib.request, 'urlopen', side_effect=error):
+                    with self.assertRaises((ValueError, urllib.error.HTTPError)):
+                        release.release('v0.1.0')
+
+
 class PrepareTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -104,8 +130,9 @@ class PrepareTests(unittest.TestCase):
                 patch.dict(os.environ, {'GITHUB_REPOSITORY': release.REPOSITORY,
                                         'GITHUB_REF': 'refs/tags/v0.1.0',
                                         'DOCKERHUB_NAMESPACE': 'example'}), \
-                patch.object(release, 'release', return_value=None), patch.object(release, 'output') as output:
+                patch.object(release, 'release') as lookup, patch.object(release, 'output') as output:
             release.prepare(argparse.Namespace(tag=tag, dry_run=dry_run))
+            lookup.assert_not_called()
             return output.call_args.kwargs
 
     def test_tag_identity_and_exact_commit_are_exported(self):
@@ -113,6 +140,7 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual(result['commit'], self.git('rev-parse', 'HEAD'))
         self.assertFalse(result['dry_run'])
         self.assertEqual(result['version'], '0.1.0')
+        self.assertEqual(set(json.loads(result['asset_names'])), release.checkpoint_names('0.1.0'))
 
     def test_tag_version_and_checkout_must_agree(self):
         with self.assertRaisesRegex(ValueError, 'Tag must be'):
@@ -227,6 +255,97 @@ class IntegrityTests(unittest.TestCase):
 
 
 class RecoveryTests(unittest.TestCase):
+    def test_first_draft_creation_uses_list_api_and_uploads_the_checkpoint(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            metadata = assets(directory)
+            metadata['images']['digest'] = None
+            release.write_json(directory / 'release-metadata.json', metadata)
+            states = []
+
+            def api(request, **kwargs):
+                self.assertTrue(request.full_url.endswith('/releases?per_page=100&page=1'))
+                return io.BytesIO(json.dumps(states).encode())
+
+            def command(*args, **kwargs):
+                self.assertEqual(args[:2], ('gh', 'release'))
+                if args[2] == 'create':
+                    states.append({'tag_name': 'v0.1.0', 'draft': True, 'assets': []})
+                else:
+                    self.assertEqual(args[2], 'upload')
+                    states[0]['assets'].append({'name': Path(args[4]).name})
+
+            with patch.dict(os.environ, {'GH_TOKEN': 'fixture-token'}), \
+                    patch.object(release.urllib.request, 'urlopen', side_effect=api), \
+                    patch.object(release, 'notes', return_value='First release.'), \
+                    patch.object(release, 'run', side_effect=command):
+                release.draft(argparse.Namespace(assets=directory))
+            self.assertTrue(release.has_checkpoint(states[0], '0.1.0'))
+
+    def test_stage_retry_restores_digest_after_interrupted_registry_copy(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            remote, local = root / 'remote', root / 'local'
+            remote.mkdir()
+            metadata = assets(remote)
+            metadata['images']['digest'] = None
+            release.write_json(remote / 'release-metadata.json', metadata)
+            state = {'tag_name': 'v0.1.0', 'draft': True,
+                     'assets': [{'name': name} for name in release.checkpoint_names('0.1.0')]}
+            args = argparse.Namespace(assets=local, binaries=root / 'binaries', restore=True)
+
+            def download(tag, destination, patterns):
+                self.assertEqual(tag, 'v0.1.0')
+                destination.mkdir(parents=True, exist_ok=True)
+                for pattern in patterns:
+                    for source in remote.glob(pattern):
+                        shutil.copy2(source, destination / source.name)
+
+            def command(*command, **kwargs):
+                if command[:3] == ('gh', 'release', 'upload'):
+                    shutil.copy2(command[4], remote / Path(command[4]).name)
+
+            with patch.object(release, 'workspace_version', return_value='0.1.0'), \
+                    patch.object(release, 'capture', return_value=COMMIT), \
+                    patch.dict(os.environ, {'GHCR_IMAGE': IMAGES['ghcr'], 'DOCKERHUB_IMAGE': IMAGES['dockerhub']}), \
+                    patch.object(release, 'release', return_value=state), \
+                    patch.object(release, 'download', side_effect=download), \
+                    patch.object(release, 'run', side_effect=command) as commands, \
+                    patch.object(release, 'output') as output:
+                release.assemble(args)
+                with patch.object(release, 'inspect', side_effect=[DIGEST, None]), \
+                        patch.object(release, 'copy_image', side_effect=RuntimeError('registry unavailable')):
+                    with self.assertRaisesRegex(RuntimeError, 'registry unavailable'):
+                        release.candidate(args)
+                self.assertEqual(json.loads((remote / 'release-metadata.json').read_text())['images']['digest'], DIGEST)
+                # A rerun starts on a fresh runner with stale prepare outputs.
+                shutil.rmtree(local)
+                release.recovery(argparse.Namespace())
+                self.assertTrue(output.call_args.kwargs['reuse'])
+                release.assemble(args)
+                release.draft(args)
+                commands.reset_mock()
+                with patch.object(release, 'inspect', side_effect=[DIGEST, None]), \
+                        patch.object(release, 'copy_image') as copy_image:
+                    release.candidate(args)
+                    copy_image.assert_called_once_with(IMAGES['ghcr'] + '@' + DIGEST,
+                                                       IMAGES['dockerhub'] + ':sha-' + COMMIT)
+                commands.assert_not_called()
+
+    def test_recovery_only_reuses_complete_draft_checkpoints(self):
+        names = release.checkpoint_names('0.1.0')
+        complete = {'draft': True, 'assets': [{'name': name} for name in names]}
+        partial = {**complete, 'assets': [{'name': name} for name in names - {'SHA256SUMS'}]}
+        with patch.object(release, 'workspace_version', return_value='0.1.0'), \
+                patch.object(release, 'output') as output:
+            for state, expected in ((None, False), (partial, False), (complete, True)):
+                with self.subTest(state=state), patch.object(release, 'release', return_value=state):
+                    release.recovery(argparse.Namespace())
+                    self.assertEqual(output.call_args.kwargs['reuse'], expected)
+            with patch.object(release, 'release', return_value={**complete, 'draft': False}):
+                with self.assertRaisesRegex(ValueError, 'already published'):
+                    release.recovery(argparse.Namespace())
+
     def test_docker_hub_failure_reuses_checkpoint_without_rebuilding(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)

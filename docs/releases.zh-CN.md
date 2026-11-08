@@ -84,8 +84,8 @@ docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
    引用选择器中选择同一 tag，并在 `tag` 输入中填写它。
 4. 为 `main` 和 `v*` 设置保护规则，仅允许维护者或发布自动化创建 tag，禁止删除或
    强制更新版本 tag，并启用 GitHub 不可变 Release。
-5. 允许发布任务写入仓库内容、Packages 和 Attestations。GHCR 使用工作流内置的
-   `GITHUB_TOKEN`，不需要额外 PAT。
+5. 允许草稿查询任务写入仓库内容，允许发布任务写入仓库内容、Packages 和
+   Attestations。GHCR 使用工作流内置的 `GITHUB_TOKEN`，不需要额外 PAT。
 6. 将 GHCR 的 `ponydb` 包设为公开。即使源码仓库公开，首次创建的包仍可能是私有。
    若尚无此包，首次 RC 会创建候选镜像和 Release 草稿，在匿名拉取检查处停止。
    将包设为公开后，重跑失败任务即可。
@@ -119,15 +119,17 @@ docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
 原生架构运行验证。
 
 通过验证后，工作流将 CLI 包暂存到 Release 草稿，记录构建来源证明，在 GHCR 构建
-候选 OCI 索引，再把索引及证明复制到 Docker Hub，不重复构建。原生 runner 从两处
-匿名拉取，校验程序摘要、认证、SQL、MCP、SIGTERM，以及替换容器和缓存后的数据
-持久性。全部通过后，才提升完整版本标签、更新适用的浮动标签并自动公开 Release。
+候选 OCI 索引，再把索引及证明复制到 Docker Hub，不重复构建。镜像验证通过 Actions
+产物接收候选元数据，任务仅需仓库读取权限。原生 runner 从两处匿名拉取，校验程序
+摘要、认证、SQL、MCP、SIGTERM，以及替换容器和缓存后的数据持久性。全部通过后，
+才提升完整版本标签、更新适用的浮动标签并自动公开 Release。
 
 ## 失败恢复
 
 优先在失败的 Actions 运行中选择 **rerun failed jobs**。CLI 构建产物保留 30 天。
 草稿包含 `release-metadata.json`、`SHA256SUMS` 和五个 CLI 包后，即成为持久恢复
-检查点。
+检查点。每次发布尝试都会重新检查当前草稿，因此镜像复制失败后重跑会保留已记录的
+镜像 digest 和原始 CLI 包。
 
 重新启动恢复运行时，选择现有 tag 作为工作流引用，在 `tag` 中填写同一 tag，关闭
 `dry_run`。工作流复用草稿中的原始 CLI 包和候选 digest。已公开的版本只校验，不

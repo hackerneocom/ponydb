@@ -31,8 +31,7 @@ jobs:
       tag: ${{ steps.prepare.outputs.tag }}
       commit: ${{ steps.prepare.outputs.commit }}
       dry_run: ${{ steps.prepare.outputs.dry_run }}
-      reuse: ${{ steps.prepare.outputs.reuse }}
-      published: ${{ steps.prepare.outputs.published }}
+      asset_names: ${{ steps.prepare.outputs.asset_names }}
       ghcr: ${{ steps.prepare.outputs.ghcr }}
       dockerhub: ${{ steps.prepare.outputs.dockerhub }}
     steps:
@@ -42,10 +41,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
-      - name: Validate release identity and find recovery checkpoint
+      - name: Validate release identity
         id: prepare
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
           DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE }}
@@ -54,16 +52,49 @@ jobs:
           if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
           python3 scripts/release.py prepare --tag "$RELEASE_TAG" "${args[@]}"
 
-  ci:
+  discover:
     needs: prepare
-    if: needs.prepare.outputs.published != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      reuse: ${{ steps.discover.outputs.reuse || 'false' }}
+      published: ${{ steps.discover.outputs.published || 'false' }}
+    steps:
+      # Draft discovery needs push access. Run only API queries, never tag code.
+      - name: Find the release checkpoint
+        id: discover
+        if: needs.prepare.outputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          REQUIRED_ASSETS: ${{ needs.prepare.outputs.asset_names }}
+        run: |
+          states="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '.[] | {tag_name, draft, assets: [.assets[].name]}')"
+          state="$(jq -cs --arg tag "$TAG" \
+            'map(select(.tag_name == $tag)) | if length > 1 then error("Duplicate release tag") else .[0] end' <<< "$states")"
+          reuse="$(jq --argjson required "$REQUIRED_ASSETS" \
+            '($required - (.assets // []) | length) == 0' <<< "$state")"
+          published="$(jq '. != null and .draft == false' <<< "$state")"
+          if [ "$published" = true ] && [ "$reuse" != true ]; then
+            echo 'Published release is missing its release checkpoint' >&2
+            exit 1
+          fi
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: [prepare, discover]
+    if: needs.discover.outputs.published != 'true'
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.prepare.outputs.commit }}
 
   build:
-    needs: prepare
-    if: needs.prepare.outputs.reuse != 'true' && needs.prepare.outputs.published != 'true'
+    needs: [prepare, discover]
+    if: needs.discover.outputs.reuse != 'true' && needs.discover.outputs.published != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -178,12 +209,12 @@ jobs:
           retention-days: 7
 
   stage:
-    needs: [prepare, ci, build]
+    needs: [prepare, discover, ci, build]
     if: >-
       always() && !failure() && !cancelled() &&
-      needs.prepare.outputs.dry_run == 'false' && needs.prepare.outputs.published == 'false' &&
+      needs.prepare.outputs.dry_run == 'false' && needs.discover.outputs.published == 'false' &&
       needs.ci.result == 'success' &&
-      (needs.build.result == 'success' || needs.prepare.outputs.reuse == 'true')
+      (needs.build.result == 'success' || needs.discover.outputs.reuse == 'true')
     environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -208,15 +239,18 @@ jobs:
           HUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           HUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: test -n "$HUB_USERNAME" && test -n "$HUB_TOKEN"
+      - name: Recheck the current recovery checkpoint
+        id: recovery
+        run: python3 scripts/release.py recovery
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        if: needs.prepare.outputs.reuse != 'true'
+        if: steps.recovery.outputs.reuse != 'true'
         with:
           pattern: cli-*
           merge-multiple: true
           path: release-assets
       - name: Assemble or restore the release checkpoint
         env:
-          REUSE: ${{ needs.prepare.outputs.reuse }}
+          REUSE: ${{ steps.recovery.outputs.reuse }}
         run: |
           args=()
           if [ "$REUSE" = true ]; then args+=(--restore); fi
@@ -246,9 +280,18 @@ jobs:
       - name: Build once and copy the same index to Docker Hub
         id: candidate
         run: python3 scripts/release.py candidate
+      - name: Pass the candidate checkpoint to image verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-image-checkpoint
+          path: release-assets/release-metadata.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
 
   verify-images:
     needs: [prepare, stage]
+    if: ${{ !cancelled() && !failure() && needs.stage.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
@@ -261,15 +304,17 @@ jobs:
           ref: ${{ needs.prepare.outputs.commit }}
           persist-credentials: false
       - name: Restore the expected binary checksums
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-        run: gh release download "$TAG" --repo hackerneocom/ponydb --pattern release-metadata.json
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-image-checkpoint
       - name: Pull anonymously and test both registries on native hardware
         run: python3 scripts/release_smoke.py registries --metadata release-metadata.json
 
   publish:
     needs: [prepare, stage, verify-images]
+    if: >-
+      !cancelled() && !failure() && needs.stage.result == 'success' &&
+      needs.verify-images.result == 'success'
     environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -304,8 +349,8 @@ jobs:
         run: python3 scripts/release.py promote
 
   verify-published:
-    needs: prepare
-    if: needs.prepare.outputs.published == 'true'
+    needs: [prepare, discover]
+    if: needs.discover.outputs.published == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

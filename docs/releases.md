@@ -97,8 +97,9 @@ Before the first release:
 4. Protect `main` and `v*` tags with repository rules. Limit tag creation to
    maintainers/release automation and block tag deletion and force updates.
    Enable immutable releases in repository settings.
-5. Ensure Actions can write repository contents, packages, and attestations in
-   the publication jobs. GHCR uses the workflow's `GITHUB_TOKEN`, not a PAT.
+5. Ensure Actions can write repository contents in the draft-discovery job and
+   contents, packages, and attestations in the publication jobs. GHCR uses the
+   workflow's `GITHUB_TOKEN`, not a PAT.
 6. Make the GHCR `ponydb` package public. GHCR can initially create a private
    package even in a public repository. If the package does not exist yet, the
    first RC run creates the candidate and draft, then stops at the anonymous-pull
@@ -140,17 +141,20 @@ containers are also tested on their native CPU architectures.
 
 After validation, the workflow uploads the CLI packages to a draft release,
 records build attestations, builds a candidate OCI index in GHCR, and copies the
-index and attestations to Docker Hub without rebuilding. Native runners pull
-both copies anonymously and check their binary hashes, authentication, SQL, MCP,
-SIGTERM, and data persistence after replacing the container and its cache. Only
-then does publication promote exact version tags, update applicable aliases, and
-automatically make the GitHub Release public.
+index and attestations to Docker Hub without rebuilding. Image verification
+receives the candidate metadata as an Actions artifact using a read-only repository
+token. Native runners pull both copies anonymously and check their binary hashes,
+authentication, SQL, MCP, SIGTERM, and data persistence after replacing the container
+and its cache. Only then does publication promote exact version tags, update
+applicable aliases, and automatically make the GitHub Release public.
 
 ## Recover a failed release
 
 Open the failed Actions run and **rerun failed jobs** first. CLI build artifacts
 are retained for 30 days. Once the draft contains `release-metadata.json`,
 `SHA256SUMS`, and all five packages, it is the persistent recovery checkpoint.
+Each publication attempt checks the current draft again, so retrying a failed
+registry copy preserves the already recorded image digest and original packages.
 
 To start a new recovery run, select the existing tag as the workflow ref, enter
 the same `tag`, and disable `dry_run`. The workflow reuses the draft's original
