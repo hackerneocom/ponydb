@@ -1,5 +1,9 @@
 # CLI S3 端到端测试
 
+发布工具回归检查使用 `python3 -m unittest discover -s tests/release -v`，不需要 S3。
+发布工作流另在两种原生 Linux 架构上运行完整 CLI 测试，以及容器、静态链接、
+Alpine/Debian、TLS/DNS 验证；执行和恢复方式见[发布指南](../docs/releases.zh-CN.md)。
+
 `cli_e2e.py` 是统一运行入口，具体测试按命令放在 `cli_e2e/test_*.py` 中，使用 Python 标准库 `unittest` 自动发现。测试使用真实 CLI 子进程和 S3 兼容存储，覆盖全部 CLI 命令，包括 HTTP server、stdio MCP、11 个业务操作、当前版本/快照导出及本地文件恢复。只依赖 Python 3.9+ 标准库和编译好的 CLI。
 
 可以运行全部测试，也可以按文件对应的测试组选择运行；选择多个测试组时重复 `--suite`：

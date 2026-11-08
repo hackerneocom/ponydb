@@ -8,7 +8,11 @@
 
 ## 安装
 
-安装 Rust 1.95 后，在仓库根目录执行：
+从 [GitHub Releases](https://github.com/hackerneocom/ponydb/releases) 下载预编译 CLI。
+发布工作流提供 Linux x86_64/ARM64、macOS Intel/Apple Silicon 和 Windows x86_64 包。
+平台选择、SHA256 校验、兼容范围及容器标签见[安装与发布指南](docs/releases.zh-CN.md)。
+
+从源码安装时，安装 Rust 1.95 后在仓库根目录执行：
 
 ```sh
 cargo install --locked --path apps/cli
@@ -335,15 +339,20 @@ curl --fail-with-body \
 
 ### Docker
 
-在仓库根目录构建镜像，镜像默认启动 `ponydb server`：
+使用发布镜像，或在仓库根目录从源码构建。镜像支持 Linux amd64/arm64，默认启动
+`ponydb server`：
 
 ```sh
-docker build -t ponydb .
+docker pull ghcr.io/hackerneocom/ponydb:0.1.0
 docker run --rm -p 127.0.0.1:8080:8080 \
   --mount "type=bind,source=$PWD/ponydb.toml,target=/config/ponydb.toml,readonly" \
   -e PONYDB_SERVER__LISTEN=0.0.0.0:8080 \
-  ponydb server --config /config/ponydb.toml
+  ghcr.io/hackerneocom/ponydb:0.1.0 server --config /config/ponydb.toml
 ```
+
+将 `0.1.0` 替换为所需版本；使用对应 digest 可固定镜像内容。Docker Hub 镜像地址
+见 Release 说明。本地构建可执行 `docker build -t ponydb .`，并把上述镜像名换为
+`ponydb`。
 
 挂载的配置须包含 S3 凭证和服务认证身份，容器内的非特权用户须能读取该文件，S3 endpoint 也须能从容器内访问。配置中的 `localhost` 指容器自身。需要通过宿主机环境变量传入凭证或认证时，按需添加 `-e PONYDB_STORAGE__CREDENTIALS__ACCESS_KEY_ID`、`-e PONYDB_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY`、可选的 `-e PONYDB_STORAGE__CREDENTIALS__SESSION_TOKEN` 和 `-e PONYDB_SERVER__AUTH`。容器内监听 `0.0.0.0` 以支持端口转发，示例仅将端口发布到宿主机回环地址。
 

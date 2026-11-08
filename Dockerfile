@@ -16,14 +16,13 @@ RUN cargo chef cook --locked --release -p ponydb --recipe-path recipe.json
 COPY . .
 RUN cargo build --locked --release -p ponydb
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS runtime-base
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin ponydb \
     && mkdir -p /cache \
     && chown ponydb:ponydb /cache
-COPY --from=build /src/target/release/ponydb /usr/local/bin/ponydb
 USER ponydb
 # /cache and system temporary workspaces are disposable; all acknowledged data lives in S3.
 ENV PONYDB_CACHE__DIRECTORY=/cache
@@ -31,3 +30,20 @@ EXPOSE 8080
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["ponydb"]
 CMD ["server"]
+
+# Release builds supply the same musl binaries as the downloadable CLI packages.
+# docker buildx build --target release --build-context binaries=./release-binaries ...
+FROM runtime-base AS release
+ARG TARGETARCH
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.title="ponydb" \
+    org.opencontainers.image.source="https://github.com/hackerneocom/ponydb" \
+    org.opencontainers.image.licenses="AGPL-3.0-only" \
+    org.opencontainers.image.version="$VERSION" \
+    org.opencontainers.image.revision="$REVISION"
+COPY --from=binaries --chmod=0755 /${TARGETARCH}/ponydb /usr/local/bin/ponydb
+
+# Keep a source build as the default target for local development and ordinary CI.
+FROM runtime-base AS runtime
+COPY --from=build /src/target/release/ponydb /usr/local/bin/ponydb
