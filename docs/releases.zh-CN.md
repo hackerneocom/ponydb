@@ -21,7 +21,7 @@ ponydb 从同一版本 tag 发布原生 CLI 包和 Linux 容器镜像，自动�
 以 Linux x86_64 为例，将版本号替换为所需版本：
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.1
 PACKAGE="ponydb-$VERSION-x86_64-unknown-linux-musl"
 curl --fail --location --remote-name \
   "https://github.com/hackerneocom/ponydb/releases/download/v$VERSION/$PACKAGE.tar.gz"
@@ -61,8 +61,8 @@ gh attestation verify PACKAGE.tar.gz --repo hackerneocom/ponydb
 的程序与对应 Linux CLI 包相同。
 
 ```sh
-docker pull ghcr.io/hackerneocom/ponydb:0.1.0
-docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
+docker pull ghcr.io/hackerneocom/ponydb:0.1.1
+docker run --rm ghcr.io/hackerneocom/ponydb:0.1.1 version
 ```
 
 部署时固定完整版本或 `image@sha256:...`。正式版更新对应 `X.Y` 标签，且仅在版本
@@ -109,8 +109,8 @@ docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0 -m 'ponydb 0.1.0'
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m 'ponydb 0.1.1'
+   git push origin v0.1.1
    ```
 
 工作流检查 tag、锁文件、说明以及提交是否属于 `main` 历史，对该确切提交运行
@@ -125,6 +125,12 @@ docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
 才提升完整版本标签、更新适用的浮动标签并自动公开 Release。
 
 ## 失败恢复
+
+若发布报错 `tag_name was used by an immutable release`，必须改发新版本。GitHub
+会永久保留不可变 Release 使用过的标签名，即使删除 Release 和 tag 也无法复用；
+重跑同一版本不能解决此错误。按上述发布步骤更新工作区版本、锁文件和更新日志，
+合并到 `main` 后创建新的版本标签。参见
+[GitHub 不可变 Release 规则](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)。
 
 优先在失败的 Actions 运行中选择 **rerun failed jobs**。CLI 构建产物保留 30 天。
 草稿包含 `release-metadata.json`、`SHA256SUMS` 和五个 CLI 包后，即成为持久恢复

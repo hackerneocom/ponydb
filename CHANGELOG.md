@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+- Publish under a new version because GitHub permanently reserves `v0.1.0` after
+  its use by an immutable release.
+- Retain the CLI, HTTP, MCP, and storage behavior from 0.1.0. Storage layout
+  version remains 1; no configuration changes or data migration are required.
+
 ## 0.1.0
 
 - Initial ponydb release: SQLite databases on S3-compatible versioned storage.

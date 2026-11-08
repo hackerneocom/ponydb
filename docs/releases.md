@@ -21,7 +21,7 @@ version, and download its package and `SHA256SUMS`:
 For example, on Linux x86_64, replace the version with the release you want:
 
 ```sh
-VERSION=0.1.0
+VERSION=0.1.1
 PACKAGE="ponydb-$VERSION-x86_64-unknown-linux-musl"
 curl --fail --location --remote-name \
   "https://github.com/hackerneocom/ponydb/releases/download/v$VERSION/$PACKAGE.tar.gz"
@@ -67,8 +67,8 @@ OCI index digest, with `linux/amd64` and `linux/arm64` images. Each image contai
 the same executable as its Linux CLI package.
 
 ```sh
-docker pull ghcr.io/hackerneocom/ponydb:0.1.0
-docker run --rm ghcr.io/hackerneocom/ponydb:0.1.0 version
+docker pull ghcr.io/hackerneocom/ponydb:0.1.1
+docker run --rm ghcr.io/hackerneocom/ponydb:0.1.1 version
 ```
 
 Use a full version or `image@sha256:...` in deployments. Stable releases also
@@ -129,8 +129,8 @@ version tags stay unchanged.
    ```sh
    git switch main
    git pull --ff-only
-   git tag -a v0.1.0 -m 'ponydb 0.1.0'
-   git push origin v0.1.0
+   git tag -a v0.1.1 -m 'ponydb 0.1.1'
+   git push origin v0.1.1
    ```
 
 The workflow checks the tag, lockfile, notes, and `main` ancestry, then runs
@@ -149,6 +149,13 @@ and its cache. Only then does publication promote exact version tags, update
 applicable aliases, and automatically make the GitHub Release public.
 
 ## Recover a failed release
+
+If publication fails with `tag_name was used by an immutable release`, publish a
+new version. GitHub permanently reserves tags used by immutable releases, even
+after the release and tag are deleted; rerunning with the same version cannot
+resolve this error. Update the workspace version, lockfile, and changelog, merge
+to `main`, and create a new version tag as described above. See
+[GitHub's immutable release rules](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).
 
 Open the failed Actions run and **rerun failed jobs** first. CLI build artifacts
 are retained for 30 days. Once the draft contains `release-metadata.json`,

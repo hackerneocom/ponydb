@@ -14,6 +14,7 @@ Read only the references relevant to the task. Check directory-scoped `AGENTS.md
 | When working on | Reference |
 | --- | --- |
 | Documentation | [Documentation standards](docs/agents/documentation-standards.md) |
+| Release versions, tags, publication, or release failures | [Release guidance](docs/agents/releases.md) |
 | Code | [Coding standards](docs/agents/coding-standards.md) |
 | CLI commands, help, usage examples, or related tests anywhere in the repository | [CLI conventions](docs/agents/cli-conventions.md) |
 | SQLite file restore, including progress and tests | [Restore constraints](docs/agents/file-restore.md) |
