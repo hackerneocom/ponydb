@@ -30,7 +30,7 @@ The response always includes `resultType: complete`. The server process is respo
 
 ## Stdio
 
-`stdio::serve` provides a newline-delimited transport supporting stateless `2026-07-28` requests, legacy initialization, tool calls and cooperative cancellation. It shares operation dispatch with HTTP, without requiring HTTP request metadata. See the [CLI agent configuration](../../apps/cli/README.md#agent-clients-over-stdio-mcp).
+`stdio::serve` provides a newline-delimited transport supporting stateless `2026-07-28` requests, legacy initialization, tool calls and cooperative cancellation. It shares operation dispatch with HTTP, without requiring HTTP request metadata. See the [CLI AI Agent configuration](../../apps/cli/README.md#ai-agent-clients-over-stdio-mcp).
 
 ## Runtime diagnostics
 

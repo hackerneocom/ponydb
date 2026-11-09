@@ -1,6 +1,8 @@
-**English** | [中文](README.zh-CN.md)
+**English** | [中文](SERVER.zh-CN.md)
 
 # ponydb server
+
+[Deployment and API guide](../../skills/ponydb/references/http.md) · [AI Agent clients](../../skills/ponydb/references/agent-clients.md)
 
 HTTP `/v1` and MCP on one port. The process loads `runtime-config`, opens the S3 store, and serves `database-service`. It does not implement a second set of database rules.
 

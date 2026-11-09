@@ -2,6 +2,8 @@
 
 # ponydb
 
+[User guide](../../skills/ponydb/references/cli.md) · [Configuration](../../skills/ponydb/references/configuration.md) · [AI Agent clients](../../skills/ponydb/references/agent-clients.md)
+
 Native CLI for Windows, Linux, and macOS. It loads the same configuration as `ponydb server`, opens S3 from this process, and calls `database-service` directly. No server process is required.
 
 The [shared example](../../examples/ponydb.toml) lists the settings users can adjust that affect runtime behavior, with only the four required S3 fields active. Uncomment an optional section header together with its settings to override defaults. Token, authentication and directory examples are marked separately from built-in defaults.
@@ -98,7 +100,7 @@ Execute multiple statements atomically with `db DATABASE_NAME execute --input st
 }
 ```
 
-## Agent clients over stdio MCP
+## AI Agent clients over stdio MCP
 
 Run `ponydb --config /absolute/path/ponydb.toml mcp`. The client launches this long-lived process; no HTTP server or bearer token is needed. It uses the same S3 credentials and direct principal as ordinary CLI commands, with access to all 11 tools. `mcp.enabled` controls HTTP only.
 

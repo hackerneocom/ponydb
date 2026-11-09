@@ -1,378 +1,140 @@
-# ponydb
+<div align="center">
 
-通过原生 CLI 或 HTTP API，使用存储在 S3 上的 SQLite 数据库。
+# PonyDB
 
-创建数据库，执行参数化 SQL 和原子事务，查看历史快照，导出标准 SQLite 备份。CLI 支持 Linux、macOS 和 Windows，直接连接 S3；应用需要 API 接入时，可启动 HTTP server。MCP 客户端也可通过 HTTP 或 stdio 连接。
+**Serverless SQLite for AI Agents.**
 
-[English](README.md) · [快速开始](#快速开始) · [配置方式](#配置方式) · [CLI 使用](#cli-使用) · [HTTP-server](#http-server)
+<img src="docs/assets/logo.png" alt="ponydb 标志" width="520">
 
-## 安装
+![CI](https://github.com/hackerneocom/ponydb/actions/workflows/ci.yml/badge.svg)
+![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue)
 
-从 [GitHub Releases](https://github.com/hackerneocom/ponydb/releases) 下载预编译 CLI。
-发布工作流提供 Linux x86_64/ARM64、macOS Intel/Apple Silicon 和 Windows x86_64 包。
-平台选择、SHA256 校验、兼容范围及容器标签见[安装与发布指南](docs/releases.zh-CN.md)。
+[English](README.md) · **简体中文**
 
-从源码安装时，安装 Rust 1.95 后在仓库根目录执行：
+[CLI](skills/ponydb/references/cli.zh-CN.md) · [HTTP / Docker](skills/ponydb/references/http.zh-CN.md) · [AI Agent 接入](skills/ponydb/references/agent-clients.zh-CN.md) · [配置](skills/ponydb/references/configuration.zh-CN.md)
 
-```sh
-cargo install --locked --path apps/cli
-ponydb version
-```
+</div>
 
-`ponydb` 会安装到 Cargo 的二进制目录，请确保该目录已加入 `PATH`。SQLite 已内置。使用容器运行 HTTP server 的方式见 [Docker](#docker)。
+ponydb 是基于 SQLite 和对象存储的轻量级事务 SQL 数据库，也是可自行托管的 Cloudflare D1 开源替代，提供 CLI、HTTP API 和供 AI Agent 使用的 MCP 工具。
+
+## 为什么选择 ponydb
+
+- **跨设备使用同一个数据库。** 数据实时持久化在对象存储桶中，其他设备使用相同配置即可实时读写相同的数据库。
+- **多个客户端并发读写。** 支持参数化 SQL 和原子事务，通过乐观并发控制提交写入。
+- **数据库数量理论上不限。** 每个数据库以轻量的头文件管理，彼此独立，可创建成千上万个。
+- **无需常驻数据库服务。** 支持 cli 直接读写数据库。使用对象存储时，只需要为存储和请求按用量计费；闲置时仅产生数据存储费用。
+
+| 交互形式                          | 接入方式                                                   | 使用场景                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [CLI](skills/ponydb/references/cli.zh-CN.md)      | —                                                      | 在终端或脚本中直接读写数据库。                                                                                                                                        |
+| [HTTP 服务](skills/ponydb/references/http.zh-CN.md) | —                                                      | 为应用提供远程 HTTP API，由服务端统一管理对象存储凭证与访问权限。                                                                                                                  |
+| **AI Agent**                     | [CLI](skills/ponydb/references/agent-clients.zh-CN.md#在-ai-agent-中使用-cli)     | 可执行 Shell 命令时，推荐直接使用 CLI。                                                                                                                              |
+|                               | [HTTP MCP](skills/ponydb/references/agent-clients.zh-CN.md#http-mcp)       | 无法安装 ponydb CLI 时，推荐在 Serverless 平台上通过 [Docker 容器](skills/ponydb/references/http.zh-CN.md#docker)部署 HTTP 服务，再通过 HTTP MCP 接入。AI Agent 客户端需支持 ponydb 的 HTTP MCP 协议，只需配置服务地址与令牌。 |
+|                               | [CLI stdio MCP](skills/ponydb/references/agent-clients.zh-CN.md#stdio-mcp) | 可以安装 ponydb CLI，但不允许 AI Agent 执行 Shell 命令时，推荐由 AI Agent 客户端启动本地 CLI 进程，通过 stdio 调用 MCP 工具，无需常驻 HTTP 服务。                                                      |
+
+适用场景：
+
+- **AI Agent 上下文：** 持久化保存记忆、任务、事实和工具结果。
+- **个人数据库：** 跨设备使用的个人应用数据集，例如笔记、待办、财务数据等。
 
 ## 快速开始
 
-准备一个已创建的 S3 兼容存储桶，以及对该桶和所用前缀具有 List/Get/Put/Delete 权限的凭证。存储服务必须支持条件写入，可通过 `config validate` 检查兼容性。本地 S3 服务可参考 [RustFS 开发环境](.devcontainer/README.md#rustfs)。
+### 通过 AI Agent 安装
 
-以下命令使用 POSIX shell 语法；Windows 用户请按所用 shell 调整环境变量设置方式。
+把下面的提示词交给 Claude Code、Codex、WorkBuddy 或 DeepSeek Harness：
 
-复制配置模板，将其中四项未注释的 S3 配置替换为实际值：endpoint、bucket、access key ID 和 secret access key。
+> 请阅读 [https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md](https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md) ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
+
+手动操作见 [AI Agent 接入指南](skills/ponydb/references/agent-clients.zh-CN.md)，覆盖 CLI 调用、各客户端 stdio MCP 配置、HTTP MCP 要求和使用提示词。远程 HTTP MCP 客户端只需要服务地址与令牌；在服务主机安装 CLI，或使用 Docker 部署即可。
+
+### 手动安装
+
+#### 1. 准备对象存储
+
+创建存储桶、访问凭证，并访问凭证授予 List/Get/Put/Delete 权限。
+
+支持以下对象存储：
+
+- [RustFS](https://rustfs.com/)（自托管推荐）
+- [火山引擎 TOS](https://www.volcengine.com/product/tos)（中国区域推荐）
+- [Cloudflare R2](https://www.cloudflare.com/products/r2/)（非中国区域推荐）
+- [MinIO](https://www.min.io/)
+- [AWS S3](https://aws.amazon.com/s3/)
+
+> ponydb 依赖对象存储的条件写入、强写后读一致性等特性，并非所有对象存储服务均支持。详情见[存储要求与服务商设置](skills/ponydb/references/configuration.zh-CN.md#对象存储)。
+
+#### 2. 安装 CLI
+
+从 [GitHub Releases](https://github.com/hackerneocom/ponydb/releases) 下载适合你的操作系统（Linux、macOS 或 Windows）和 CPU 架构的 CLI 安装包。解压并将 `ponydb`（Windows 为 `ponydb.exe`）加入 `PATH`，然后验证安装：
 
 ```sh
-cp examples/ponydb.toml ./ponydb.toml
-# 编辑 ponydb.toml 后再继续。
-export PONYDB_CONFIG="$PWD/ponydb.toml"
-ponydb config validate --target cli
+ponydb version
 ```
 
-后续示例沿用该环境变量，也可以在每条命令中指定 `--config ./ponydb.toml`。凭证还可通过[环境变量](#环境变量)传入。
+平台选择与校验见[安装指南](skills/ponydb/references/installation.zh-CN.md#下载-cli)。
 
-创建数据库，写入一条笔记，然后查询：
+#### 3. 配置并查询
 
-```sh
-ponydb databases create notes --description "My notes"
-ponydb db notes execute "CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT)"
-ponydb db notes execute "INSERT INTO notes(title) VALUES (?)" \
-  --param '{"type":"text","value":"First note"}'
-ponydb db notes execute "SELECT id, title FROM notes ORDER BY id" --output table
-```
-
-查询结果中应包含 ID 为 `1`、标题为 `First note` 的笔记。执行这些命令无需启动 HTTP server。
-
-## 配置方式
-
-CLI、HTTP server 和 stdio MCP 使用同一套 TOML 配置与环境变量。[完整配置模板](examples/ponydb.toml)列出了可调整的设置和默认值。修改可选配置时，需要同时取消节标题和对应设置的注释。
-
-### 配置文件
-
-CLI 访问所需的最小文件示例：
+创建 `ponydb.toml`，填入以下存储配置，并将端点、存储桶和凭证替换为实际值：
 
 ```toml
 [storage]
-endpoint = "https://s3.example.com"
+endpoint = "https://<s3-endpoint>"
 bucket = "my-bucket"
+# 签名地域，默认为 us-east-1；按服务商要求修改，Cloudflare R2 使用 auto。
 region = "us-east-1"
-prefix = "ponydb/"
+# 路径式寻址，默认为 true；端点要求虚拟主机式寻址时设为 false。
+force_path_style = true
+# 桶内对象键前缀，默认为空（不添加前缀）。
+prefix = ""
 
 [storage.credentials]
 access_key_id = "<access-key-id>"
 secret_access_key = "<secret-access-key>"
-# session_token = "<temporary-credential-token>"
+# 仅使用临时凭证时需要，默认不设置。
+# session_token = "<session-token>"
 ```
 
-将 endpoint 和凭证替换为存储服务的实际值，并提前创建桶。使用相同 endpoint、bucket 和 prefix 的客户端访问同一组数据库。`storage.force_path_style` 默认为 `true`，适用于 MinIO 等服务；OSS 等要求虚拟主机寻址的服务应设为 `false`。endpoint 和 bucket 始终分别配置。
+更多内容见[配置](skills/ponydb/references/configuration.zh-CN.md)。
 
-按以下顺序选择配置文件，各文件之间不合并：
-
-| 优先级 | 来源 |
-| --- | --- |
-| 1 | `ponydb --config /path/to/ponydb.toml ...` |
-| 2 | `PONYDB_CONFIG=/path/to/ponydb.toml` |
-| 3 | 下表中的平台默认路径 |
-
-| 平台 | 默认配置文件 |
-| --- | --- |
-| Linux | `$XDG_CONFIG_HOME/ponydb/config.toml`，未设置时为 `~/.config/ponydb/config.toml` |
-| macOS | `~/Library/Application Support/ponydb/config.toml` |
-| Windows | `%APPDATA%\ponydb\config.toml` |
-
-平台默认文件不存在时，使用内置默认值和环境变量；通过 `--config` 或 `PONYDB_CONFIG` 显式指定的文件不存在则报错。TOML 文件中的相对文件路径以配置文件所在目录为基准。
-
-### 环境变量
-
-环境变量覆盖文件中的值。命名格式为 `PONYDB_<SECTION>__<KEY>`，更深层字段继续用 `__` 分隔。无需配置文件时，保持 `PONYDB_CONFIG` 未设置，并提供四项必需的 S3 配置：
+以下命令使用 POSIX shell；Windows 请使用对应终端的环境变量语法。
 
 ```sh
-export PONYDB_STORAGE__ENDPOINT=https://s3.example.com
-export PONYDB_STORAGE__BUCKET=my-bucket
-export PONYDB_STORAGE__CREDENTIALS__ACCESS_KEY_ID='<access-key-id>'
-export PONYDB_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY='<secret-access-key>'
-ponydb databases list
-```
-
-临时凭证还需设置 `PONYDB_STORAGE__CREDENTIALS__SESSION_TOKEN`。应用不读取 `AWS_*` 凭证变量或 AWS 凭证文件。未知配置字段及未知 `PONYDB_` 变量会被拒绝。`server --listen` 等命令专用参数优先于配置文件和环境变量。
-
-### 检查配置与常用设置
-
-```sh
-ponydb config show --target cli
-ponydb config show --target server
+export PONYDB_CONFIG="$PWD/ponydb.toml"
 ponydb config validate --target cli
-ponydb config validate --target server
+ponydb databases create notes --description "My notes"
+ponydb db notes execute "CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT)"
+ponydb db notes execute "INSERT INTO notes(title) VALUES (?)" \
+  --param '{"type":"text","value":"First note"}'
+ponydb db notes execute "SELECT id, title FROM notes" --output table
 ```
 
-`config show` 可离线运行，始终隐藏凭证和认证 token。`config validate` 检查配置，并在所配置的前缀下创建临时对象执行真实 S3 检查，包含一个 2 MiB 对象。它需要 List/Get/Put/Delete 权限，并会清理探测对象；执行被中断时可能留下探测对象。`--target server` 或 `all` 还检查服务认证配置。
+查询返回 `1` 和 `First note`。数据库管理、事务、快照、备份和维护的完整用法见 [CLI 指南](skills/ponydb/references/cli.zh-CN.md)。
 
-常用设置：
+## SQLite 特性与边界
 
-| 配置项 | 默认值 | 用途 |
-| --- | --- | --- |
-| `server.listen` | `127.0.0.1:8080` | HTTP 监听地址 |
-| `cli.output` | `json` | CLI 输出格式：`json` 或 `table` |
-| `requests.default_timeout_ms` | `90000` | 默认请求超时，文件恢复除外 |
-| `requests.max_timeout_ms` | `1800000` | 请求超时上限 |
-| `query.max_rows` | `1000` | 查询返回行数上限 |
-| `query.max_result_bytes` | `1048576` | 查询结果序列化后的大小上限，1 MiB |
-| `exports.max_file_bytes` | `10737418240` | 单个 SQLite 导出文件上限，10 GiB |
-| `snapshots.retention_days` | `7` | 默认历史保留天数 |
-| `cache.directory` | 用户缓存目录 | 本地可丢弃缓存的位置 |
-| `cache.disk_budget_mib` | `2048` | 缓存数据预算，`0` 禁用磁盘缓存 |
-| `logging.level` / `logging.format` | `warn` / `json` | stderr 诊断日志；格式也支持 `text` |
+内置 SQLite 支持 **JSON / JSONB** 和**数学函数**，可使用普通表、索引、视图、触发器、外键与原子语句数组。示例与限制见 [SQLite 兼容性指南](skills/ponydb/references/sqlite.zh-CN.md)。
 
-查询结果超限会报错，不会静默截断。使用 SQL `LIMIT` 或分页控制结果大小。耗时较长的导出还可能需要提高请求超时和读取时限，见[导出说明](apps/cli/README.zh-CN.md#数据库与快照导出)。
+用户 SQL 暂不支持 `ATTACH` / `DETACH`、`PRAGMA`、显式事务控制、`VACUUM`、动态加载扩展和 `CREATE VIRTUAL TABLE`（包括 FTS 与 R-tree 表）。需要本地 SQLite 工具时，可导出标准 SQLite 文件。桶内保存的是 ponydb 的版本化格式，不能直接挂载为 `.sqlite` 文件；在线访问需要网络连接。
 
-## CLI 使用
+## 与 LiteFS、Litestream 的比较
 
-`databases` 用于创建和列出数据库；`db DATABASE_NAME [ACTION]` 用于操作指定数据库，省略动作时返回数据库详情。数据库名必须显式提供，区分大小写且不可修改，长度为 1–64 个 Unicode BMP 字符，不允许 NUL、`/`、`\`、`.` 或尾随 ASCII 空格。名称含空格时请在 shell 中加引号。
 
-### 管理数据库
+|      | ponydb                     | LiteFS             | Litestream                |
+| ---- | -------------------------- | ------------------ | ------------------------- |
+| 主要用途 | 对象存储上的事务 SQLite            | 在应用节点之间复制 SQLite   | 持续备份 SQLite               |
+| 在线数据 | 对象存储；本地工作区可丢弃              | 节点间复制的本地 SQLite 文件 | 本地 SQLite 文件；异步备份到副本存储    |
+| 写入方式 | 多客户端提交，冲突的提交失败             | 由单个主节点处理写入         | 应用写本地 SQLite；备份复制不协调独立写入方 |
+| 常驻组件 | CLI 配合对象存储无需常驻进程；HTTP 服务可选 | LiteFS 节点与主节点租约管理  | 后台复制进程                    |
+| 适用场景 | 跨设备的 AI Agent 上下文与个人数据        | 需要本地只读副本的应用        | 现有 SQLite 应用的灾难恢复         |
 
-```sh
-ponydb databases list --limit 20
-ponydb databases list --include-deleted
-ponydb db notes
-ponydb db notes update --description "Personal notes"
-ponydb db notes schema
-ponydb db notes schema --table notes --type table
-```
 
-列表还有下一页时，响应会返回 `next_cursor`，通过 `--cursor CURSOR` 继续获取。Schema 类型筛选支持 `table`、`index`、`view`、`trigger`；`--table` 精确匹配表名，且该表必须存在。
+## 开发
 
-更新和删除可使用 `ponydb db notes` 返回的 `etag` 进行条件操作。保留值中嵌入的双引号，例如：
-
-```sh
-ponydb db notes update --if-match '"ETAG_FROM_DETAILS"' --description "Updated notes"
-```
-
-`ponydb db notes delete` 逻辑删除数据库。省略 `--if-match` 时，更新和删除不要求先前获取的 ETag 匹配。描述上限为 16 KiB UTF-8 字节；通过 `--metadata-file metadata.json` 提供的自定义元数据，上限为紧凑 JSON 序列化后的 64 KiB UTF-8 字节。
-
-### SQL、参数与事务
-
-单条 SQL 可直接传入，也可从 UTF-8 文件或 stdin 读取：
-
-```sh
-ponydb db notes execute "SELECT * FROM notes LIMIT 10" --output table
-ponydb db notes execute --sql-file ./query.sql
-printf 'SELECT count(*) FROM notes' | ponydb db notes execute --sql-file -
-```
-
-使用重复的 `--param` 绑定多个参数，或通过 `--params-file params.json` 传入 JSON 数组，两种形式互斥。参数和 JSON 结果单元格均使用以下类型：
-
-| 类型 | JSON 示例 |
-| --- | --- |
-| Null | `{"type":"null"}` |
-| Integer | `{"type":"integer","value":"42"}` |
-| Real | `{"type":"real","value":3.14}` |
-| Text | `{"type":"text","value":"A note"}` |
-| Blob | `{"type":"blob","value":"SGVsbG8="}`（base64） |
-
-整数以字符串表示，避免丢失 64 位精度。JSON 结果包含 `results` 数组，每项有 `columns` 和类型化的 `rows`；写入还返回 `committed` 和 `commit_token`。
-
-需要原子执行多条语句时，将以下内容保存为 `statements.json`：
-
-```json
-{
-  "database": "notes",
-  "statements": [
-    {
-      "sql": "INSERT INTO notes(title) VALUES (?)",
-      "params": [{"type": "text", "value": "Second note"}]
-    },
-    {"sql": "SELECT id, title FROM notes ORDER BY id"}
-  ]
-}
-```
-
-```sh
-ponydb db notes execute --input ./statements.json
-```
-
-语句按顺序执行，任一失败则整个请求回滚。无需添加 `BEGIN` 或 `COMMIT`，也不要在 `--sql-file` 中放多条语句。语句数组即使只包含查询也需要写权限，且不能使用 `--max-rows`、快照一致性等只读选项。
-
-接收 JSON 请求的数据库命令可通过 `--input FILE|-` 读取完整请求，但数据库名仍须在命令中显式提供，并与请求一致。未知字段、重复键、文件与命令参数冲突均会报错。一次调用最多只能有一个输入读取 stdin。
-
-### 快照、备份与恢复
-
-```sh
-ponydb db notes snapshot list --limit 20
-ponydb db notes snapshot get SNAPSHOT_ID
-ponydb db notes execute "SELECT * FROM notes" \
-  --consistency snapshot --snapshot-id SNAPSHOT_ID
-ponydb db notes export ./notes-backup.sqlite
-ponydb db notes snapshot export SNAPSHOT_ID ./notes-history.sqlite
-ponydb db restored_notes restore file ./notes-backup.sqlite
-```
-
-将 `SNAPSHOT_ID` 替换为 `snapshot list` 返回的保留快照 ID。普通查询默认使用 `strong` 一致性；`at_least` 查询可配合先前写入返回的 `--commit-token TOKEN`，要求读取的版本不早于该次写入。
-
-导出生成独立 SQLite 文件，不覆盖已有文件，目标目录必须存在。文件恢复仅支持 CLI，输入须为稳定、完整且使用 DELETE journal 模式的 SQLite 备份。目标数据库必须不存在或已删除，因此不要先创建 `restored_notes`。恢复需要本地临时磁盘空间，进度输出到 stderr，无总执行截止时间，也不支持断点续传；请等待最终成功结果后再视为完成。
-
-### 维护与脚本集成
-
-```sh
-ponydb db notes compact
-ponydb db notes gc
-ponydb db notes gc --budget-ms 300000 --deadline-ms 330000
-ponydb db notes execute "SELECT 1" --output json > result.json
-ponydb --help
-ponydb db notes execute --help
-```
-
-压缩和 GC 在线执行。返回 `outcome: "partial"`、退出码 `6` 时，再次调用相同操作继续。压缩默认工作预算为 10 秒、最多处理 32 个段；GC 默认为 60 秒、最多尝试删除 1000 个对象。历史快照在保留期结束后通过显式 GC 清理；请保持系统时钟准确，并导出需要长期保存的历史。
-
-成功结果写入 stdout，诊断日志、错误和恢复进度写入 stderr；请通过退出码判断是否成功。`--output json|table` 选择 CLI 结果格式。`--deadline-ms` 可覆盖恢复之外的数据库操作超时，也适用于 `mcp`；`config`、`version`、`server` 不接受该参数。Server 和 MCP 命令不接受 `--output`。
-
-| 退出码 | 含义 |
-| --- | --- |
-| `0` | 成功 |
-| `1` | 其他错误 |
-| `2` | 配置或请求无效 |
-| `3` | 认证失败或权限不足 |
-| `4` | 事务冲突或 ETag 不匹配 |
-| `5` | 写入结果未知，先检查数据再决定是否重试 |
-| `6` | 维护在本次工作预算内未完成，再次调用继续 |
-
-重复调用写入会再次执行。响应丢失或返回 `OUTCOME_UNKNOWN` 时，先检查数据库，再决定是否重试；可通过业务键或唯一约束识别重复操作。
-
-## HTTP server
-
-### 配置认证并启动
-
-服务使用已有的 S3 配置，并要求至少配置一个认证身份。在 `ponydb.toml` 中加入以下内容，将示例 token 替换为至少 16 字节的长随机密钥：
-
-```toml
-[[server.auth.principals]]
-id = "admin"
-token = "replace-with-a-long-random-token"
-databases = ["*"]
-scopes = ["*"]
-```
-
-也可以通过环境变量传入完整认证对象：
-
-```sh
-export PONYDB_SERVER__AUTH='{"principals":[{"id":"admin","token":"replace-with-a-long-random-token","databases":["*"],"scopes":["*"]}]}'
-```
-
-Bearer token 用于 HTTP/MCP 客户端认证，S3 凭证用于 ponydb 进程访问存储。原生 CLI 直接使用 S3 凭证，不使用服务 token。身份 ID 和 token 均须唯一；修改认证配置后需重启服务。
-
-如果只允许某个身份查询 `notes`，可设置 `databases = ["notes"]` 和 `scopes = ["db:read", "data:read"]`；如需列出可访问数据库，再加入 `db:list`。其他权限包括 `db:create`、`db:manage`、`data:write`、`schema:write`、`db:backup`、`db:maintenance`。上面的管理员示例用 `*` 授予全部数据库和操作权限。
-
-```sh
-ponydb config validate --target server
-ponydb server --listen 127.0.0.1:8080
-```
-
-服务在前台运行。Ctrl-C 或 `SIGTERM` 会停止接收新连接，并等待进行中的请求。另开终端检查进程存活状态：
-
-```sh
-curl --fail-with-body http://127.0.0.1:8080/healthz
-```
-
-该接口无需认证，返回 `{"status":"ok"}`，但不验证 S3 是否可用。检查认证后的存储访问可请求 `GET /v1/databases`。对外提供 API 时，通过 TLS 反向代理接入。
-
-### 创建数据库并执行 SQL
-
-在另一个终端将 token 设为认证身份中配置的相同值。以下示例创建独立的 `api_notes` 数据库：
-
-```sh
-export API_TOKEN='replace-with-a-long-random-token'
-
-curl --fail-with-body http://127.0.0.1:8080/v1/databases \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"api_notes","description":"Notes over HTTP"}'
-
-curl --fail-with-body http://127.0.0.1:8080/v1/databases/api_notes/execute \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"statements":[{"sql":"CREATE TABLE notes(id INTEGER PRIMARY KEY, title TEXT)"},{"sql":"INSERT INTO notes(title) VALUES (?)","params":[{"type":"text","value":"First note"}]}]}'
-
-curl --fail-with-body http://127.0.0.1:8080/v1/databases/api_notes/execute \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"sql":"SELECT id, title FROM notes ORDER BY id","max_rows":10}'
-```
-
-响应使用与 CLI 相同的 SQL 值类型。只读查询返回 `outcome: "read_only"`，写入成功返回 `committed: true`。请求体上限为 8 MiB；路径、查询参数、请求头中的值须与请求体中的同名字段一致。只读查询可通过 `Accept: application/x-ndjson` 获取 `result_start`、`rows`、`done` 记录。
-
-### API 速查
-
-全部 `/v1` 接口均需 `Authorization: Bearer TOKEN`。将 `{database}` 替换为数据库名，`{snapshot_id}` 替换为保留快照 ID。
-
-| 方法 | 路径 | 请求 / 用途 |
-| --- | --- | --- |
-| `POST` | `/v1/databases` | `{"name":"notes"}`；可选描述和元数据 |
-| `GET` | `/v1/databases` | 列表；查询参数 `limit`、`cursor`、`include_deleted` |
-| `GET` | `/v1/databases/{database}` | 数据库详情和 ETag |
-| `PATCH` | `/v1/databases/{database}` | 更新描述、元数据或 `snapshot_retention_days` |
-| `DELETE` | `/v1/databases/{database}` | 逻辑删除数据库 |
-| `POST` | `/v1/databases/{database}/execute` | 单条 `sql`/`params` 或原子 `statements` 数组 |
-| `GET` | `/v1/databases/{database}/schema` | 可选查询参数 `table`、`type` |
-| `POST` | `/v1/databases/{database}/compact` | `{"budget_ms":10000,"max_segments":32}` |
-| `POST` | `/v1/databases/{database}/gc` | 可选 `budget_ms`、`max_objects` |
-| `GET` | `/v1/databases/{database}/snapshots` | 历史列表；查询参数 `limit`、`cursor` |
-| `GET` | `/v1/databases/{database}/snapshots/{snapshot_id}` | 快照详情 |
-| `GET` | `/v1/databases/{database}/snapshots/{snapshot_id}/export` | SQLite 下载，需要 `db:backup` |
-
-先获取数据库详情中的 `ETag` 响应头，再在 PATCH 或 DELETE 中传入 `If-Match`，即可要求版本匹配。ETag 不匹配返回 HTTP `412`，事务冲突返回 `409`。数据库创建成功返回 `201`，其他 JSON 操作成功返回 `200`。错误结构为 `{"ok":false,"error":{...}}`，包含 `code`、`message`、`retryable`、`outcome`。收到 `503` 且错误码为 `OUTCOME_UNKNOWN` 时，先检查数据，再决定是否重复写入。
-
-HTTP 支持下载历史快照；导出当前数据库和从文件恢复使用 CLI。例如，将 `SNAPSHOT_ID` 设为快照列表接口返回的 ID 后，下载备份：
-
-```sh
-curl --fail-with-body \
-  "http://127.0.0.1:8080/v1/databases/api_notes/snapshots/$SNAPSHOT_ID/export" \
-  -H "Authorization: Bearer $API_TOKEN" \
-  -o ./api-notes-backup.sqlite
-```
-
-### Docker
-
-使用发布镜像，或在仓库根目录从源码构建。镜像支持 Linux amd64/arm64，默认启动
-`ponydb server`：
-
-```sh
-docker pull ghcr.io/hackerneocom/ponydb:0.1.1
-docker run --rm -p 127.0.0.1:8080:8080 \
-  --mount "type=bind,source=$PWD/ponydb.toml,target=/config/ponydb.toml,readonly" \
-  -e PONYDB_SERVER__LISTEN=0.0.0.0:8080 \
-  ghcr.io/hackerneocom/ponydb:0.1.1 server --config /config/ponydb.toml
-```
-
-将 `0.1.1` 替换为所需版本；使用对应 digest 可固定镜像内容。Docker Hub 镜像地址
-见 Release 说明。本地构建可执行 `docker build -t ponydb .`，并把上述镜像名换为
-`ponydb`。
-
-挂载的配置须包含 S3 凭证和服务认证身份，容器内的非特权用户须能读取该文件，S3 endpoint 也须能从容器内访问。配置中的 `localhost` 指容器自身。需要通过宿主机环境变量传入凭证或认证时，按需添加 `-e PONYDB_STORAGE__CREDENTIALS__ACCESS_KEY_ID`、`-e PONYDB_STORAGE__CREDENTIALS__SECRET_ACCESS_KEY`、可选的 `-e PONYDB_STORAGE__CREDENTIALS__SESSION_TOKEN` 和 `-e PONYDB_SERVER__AUTH`。容器内监听 `0.0.0.0` 以支持端口转发，示例仅将端口发布到宿主机回环地址。
-
-## MCP 客户端
-
-让客户端启动本地 MCP 进程时使用：
-
-```sh
-ponydb --config /absolute/path/ponydb.toml mcp
-```
-
-该进程直接使用 S3 凭证。HTTP server 默认还提供 `/mcp`，使用相同 Bearer 认证；`mcp.enabled = false` 可禁用 HTTP MCP 接口。客户端配置和协议请求头要求见 [stdio 接入说明](apps/cli/README.zh-CN.md#通过-stdio-mcp-接入-agent)及 [HTTP MCP 说明](apps/cli/SERVER.zh-CN.md)。
-
-## 更多文档
-
-- [CLI 参考](apps/cli/README.zh-CN.md) / [English](apps/cli/README.md)
-- [HTTP 与 MCP 参考](apps/cli/SERVER.zh-CN.md) / [English](apps/cli/SERVER.md)
-- [完整配置模板](examples/ponydb.toml)
-- [开发环境](.devcontainer/README.md#rustfs)与[测试说明](tests/README.md)
+环境搭建与验证见[开发环境](.devcontainer/README.md)、[测试指南](tests/README.md)和[仓库指南](AGENTS.md)。模块职责见各 crate 的 README，可从 [database-service](crates/database-service/README.zh-CN.md)、[protocol](crates/protocol/README.zh-CN.md)和 [runtime-config](crates/runtime-config/README.zh-CN.md) 开始。
 
 ## 许可证
 
-[GNU Affero General Public License，仅限第 3 版（AGPL-3.0-only）](LICENSE)。
+[AGPL-3.0-only](LICENSE)。
+
+> 可免费使用，ponydb 不收取软件许可费用。使用、修改与再分发须遵守 AGPL-3.0-only。

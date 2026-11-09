@@ -1,6 +1,8 @@
-[English](README.md) | **中文**
+[English](SERVER.md) | **中文**
 
 # ponydb server
+
+[部署与 API 指南](../../skills/ponydb/references/http.zh-CN.md) · [AI Agent 接入](../../skills/ponydb/references/agent-clients.zh-CN.md)
 
 在一个端口上提供 HTTP `/v1` 和 MCP。进程加载 `runtime-config`，打开 S3 存储，并对外提供 `database-service`。它不实现第二套数据库规则。
 
