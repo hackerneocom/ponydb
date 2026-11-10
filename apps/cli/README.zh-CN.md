@@ -2,6 +2,8 @@
 
 # ponydb
 
+[使用指南](../../skills/ponydb/references/cli.zh-CN.md) · [配置](../../skills/ponydb/references/configuration.zh-CN.md) · [AI Agent 接入](../../skills/ponydb/references/agent-clients.zh-CN.md)
+
 面向 Windows、Linux 和 macOS 的原生 CLI。它加载与 `ponydb server` 相同的配置，从本进程打开 S3，并直接调用 `database-service`。不需要服务进程。
 
 [共享配置示例](../../examples/ponydb.toml) 仅列出用户可调整且实际生效的配置，只有四项必需的 S3 配置未注释。覆盖可选设置时，同时取消节标题和对应设置的注释。token、认证身份和目录的示例值与内置默认值分开标注。
@@ -89,9 +91,9 @@ CLI 更新和删除可选地提供 `--if-match ETAG` 或 DTO 的 `if_match`，�
 }
 ```
 
-## 通过 stdio MCP 接入 agent
+## 通过 stdio MCP 接入 AI Agent
 
-运行 `ponydb --config /absolute/path/ponydb.toml mcp`。由 agent 客户端启动并管理这个常驻进程，无需 HTTP 服务或 bearer 令牌。它沿用普通 CLI 的 S3 凭证和直接访问身份，暴露全部 11 个工具。`mcp.enabled` 只控制 HTTP 接口。
+运行 `ponydb --config /absolute/path/ponydb.toml mcp`。由 AI Agent 客户端启动并管理这个常驻进程，无需 HTTP 服务或 bearer 令牌。它沿用普通 CLI 的 S3 凭证和直接访问身份，暴露全部 11 个工具。`mcp.enabled` 只控制 HTTP 接口。
 
 支持 `mcpServers` 配置的客户端可使用：
 

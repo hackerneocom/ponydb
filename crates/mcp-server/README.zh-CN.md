@@ -30,7 +30,7 @@
 
 ## Stdio
 
-`stdio::serve` 提供逐行 JSON 传输，支持无状态的 `2026-07-28` 请求、旧版初始化、工具调用和协作式取消。它与 HTTP 共用操作分发，无需 HTTP 请求元数据。见 [CLI agent 配置](../../apps/cli/README.zh-CN.md#通过-stdio-mcp-接入-agent)。
+`stdio::serve` 提供逐行 JSON 传输，支持无状态的 `2026-07-28` 请求、旧版初始化、工具调用和协作式取消。它与 HTTP 共用操作分发，无需 HTTP 请求元数据。见 [CLI AI Agent 配置](../../apps/cli/README.zh-CN.md#通过-stdio-mcp-接入-ai-agent)。
 
 ## 运行诊断
 

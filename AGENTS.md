@@ -27,4 +27,4 @@ Read only the references relevant to the task. Check directory-scoped `AGENTS.md
 - For every change, run `git diff --check` and verify links in changed documents. Documentation-only changes do not require builds or code tests.
 - For Rust changes, run `cargo fmt --all` and `cargo test --locked -p <affected-package>`. Use `ponydb` for CLI changes; additional checks are linked above.
 - Report checks run, failures, and checks not run.
-- Keep this file and directory-scoped entry points short. Store detailed agent guidance in `docs/agents/` with explicit reading triggers, and prefer references to existing documentation or code over copied examples and directory listings.
+- Keep this file and directory-scoped entry points short. Store detailed AI Agent guidance for developing PonyDB source code in `docs/agents/` with explicit reading triggers, and prefer references to existing documentation or code over copied examples and directory listings.

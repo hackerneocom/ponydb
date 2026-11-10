@@ -14,4 +14,4 @@
 - Precompiled Linux, macOS, and Windows CLI packages and Linux multi-platform containers.
 
 Storage layout version: 1. See the [configuration template](examples/ponydb.toml)
-and [release guide](docs/releases.md) before deployment.
+and [installation guide](skills/ponydb/references/installation.md) before deployment.

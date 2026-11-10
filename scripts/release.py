@@ -343,7 +343,7 @@ def draft(args):
         for image in (metadata['images']['ghcr'], metadata['images']['dockerhub']):
             text += '`docker pull ' + image + ':' + metadata['version'] + '`\n\n'
         text += '[Installation and compatibility](https://github.com/' + REPOSITORY + '/blob/'
-        text += metadata['commit'] + '/docs/releases.md)\n'
+        text += metadata['commit'] + '/skills/ponydb/references/installation.md)\n'
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'notes.md'
             path.write_text(text, encoding='utf-8')
