@@ -139,6 +139,15 @@ Report each stage as verified, pending, failed, or not applicable: PonyDB instal
 
 For MCP, report tool discovery, operation authorization (including any `database_list` denial or skipped check), and query execution separately. A forbidden database listing must not mark Agent connectivity as failed when tool discovery succeeds; query access is verified only by a successful query on an explicitly authorized database.
 
-Name any setup database created and describe the non-secret settings applied. Give absolute configuration paths where applicable. For unfinished secret entry, name the exact fields or environment variables and their local destination, leaving the dependent validation and connection checks pending. Explain remaining blockers and the next required action without including secret values. Offer the [context-saving prompt](../skills/ponydb/references/agent-clients.md#try-it-after-setup) as an optional next step; do not execute its writes as part of installation without authorization.
+Name any setup database created and describe the non-secret settings applied. Give absolute configuration paths where applicable. For unfinished secret entry, name the exact fields or environment variables and their local destination, leaving the dependent validation and connection checks pending. Explain remaining blockers and the next required action without including secret values.
+
+End a successful setup handoff with 3–5 natural-language prompts the user can send next, introduced by “You can say to me:” in the user's language. Choose examples that fit the verified connection and available permissions. Use known database and table names where available; clearly mark any placeholders the user must replace. Examples include:
+
+- “Show me the tables in `DATABASE_NAME` and explain their structure.”
+- “Show me up to 10 rows from `TABLE_NAME` in `DATABASE_NAME`.”
+- “Use PonyDB to create an `agent_context` database with a `memories` table containing an ID, topic and content. Save my preference: documentation should be concise. Then query that preference back.”
+- “Query `agent_context` for my documentation preferences and use them for this task.”
+
+Present the [context-saving example](../skills/ponydb/references/agent-clients.md#try-it-after-setup) only when the connection permits creating databases and writing data. Explain that the later-session retrieval example requires the context to have been saved and PonyDB to be configured in that session. These are suggestions for the user's next request; do not execute them as part of installation without authorization. If setup remains incomplete, prioritize the next step needed to unblock it and make any usage examples conditional on completing setup.
 
 For subsequent use, see [CLI usage](../skills/ponydb/references/cli.md) and [SQLite compatibility](../skills/ponydb/references/sqlite.md). Repeated writes execute again; inspect business data before deciding to retry a write that returns `OUTCOME_UNKNOWN`. Use typed SQL parameters and statement arrays for atomic work; user SQL cannot manage transactions or load extensions directly.
