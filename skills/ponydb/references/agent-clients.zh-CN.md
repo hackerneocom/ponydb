@@ -34,7 +34,9 @@ npx skills add hackerneocom/ponydb --skill ponydb -g
 
 把以下提示词交给 AI Agent：
 
-> 请阅读 https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
+```text
+请阅读 https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
+```
 
 [AI Agent 安装指引](https://github.com/hackerneocom/ponydb/blob/main/docs/install-ponydb-with-ai.md)覆盖安装包选择、对象存储配置、客户端配置与验证。
 
