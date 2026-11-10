@@ -210,7 +210,19 @@ impl Execute {
         Ok(())
     }
 }
-dto!(Compact {pub database:String,pub budget_ms:u64,pub max_segments:usize});
+dto!(Compact {
+    pub database: String,
+    #[serde(default = "default_compact_budget_ms")]
+    pub budget_ms: u64,
+    #[serde(default = "default_compact_max_segments")]
+    pub max_segments: usize,
+});
+fn default_compact_budget_ms() -> u64 {
+    10000
+}
+fn default_compact_max_segments() -> usize {
+    32
+}
 dto!(Gc {pub database:String,pub budget_ms:Option<u64>,pub max_objects:Option<usize>});
 dto!(SnapshotList {pub database:String,#[serde(default="default_limit")]pub limit:usize,pub cursor:Option<String>,});
 dto!(SnapshotGet {pub database:String,pub snapshot_id:String});
@@ -555,6 +567,48 @@ pub fn strict_json(bytes: &[u8]) -> Result<Value, String> {
     d.end().map_err(|e| e.to_string())?;
     Ok(value)
 }
+#[cfg(test)]
+mod compact_tests {
+    use super::*;
+
+    #[test]
+    fn omitted_limits_use_cli_defaults_independently() {
+        for (input, budget, segments) in [
+            (json!({"database":"notes"}), 10000, 32),
+            (json!({"database":"notes","budget_ms":5000}), 5000, 32),
+            (json!({"database":"notes","max_segments":16}), 10000, 16),
+            (
+                json!({"database":"notes","budget_ms":5000,"max_segments":16}),
+                5000,
+                16,
+            ),
+        ] {
+            let compact: Compact = serde_json::from_value(input).unwrap();
+            assert_eq!(compact.budget_ms, budget);
+            assert_eq!(compact.max_segments, segments);
+        }
+        for field in ["budget_ms", "max_segments"] {
+            for value in [Value::Null, json!("1"), json!(-1), json!(1.5)] {
+                let mut input = json!({"database":"notes"});
+                input[field] = value;
+                assert!(serde_json::from_value::<Compact>(input).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn mcp_schema_exposes_optional_limits_and_defaults() {
+        let tool = tools()
+            .into_iter()
+            .find(|tool| tool["name"] == "database_compact")
+            .unwrap();
+        let schema = &tool["inputSchema"];
+        assert_eq!(schema["required"], json!(["database"]));
+        assert_eq!(schema["properties"]["budget_ms"]["default"], 10000);
+        assert_eq!(schema["properties"]["max_segments"]["default"], 32);
+    }
+}
+
 #[cfg(test)]
 mod metadata_tests {
     use super::*;

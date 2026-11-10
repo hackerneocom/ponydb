@@ -685,6 +685,71 @@ async fn restore_is_cli_only_while_remote_maintenance_remains_available() {
 }
 
 #[tokio::test]
+async fn http_and_mcp_compact_accept_optional_limits_and_reject_invalid_values() {
+    let app = app();
+    let (status, _) = send(&app, "POST", "/v1/databases", json!({"name":"notes"}), &[]).await;
+    assert_eq!(status, StatusCode::CREATED);
+    for (input, valid) in [
+        (json!({}), true),
+        (json!({"budget_ms":5000}), true),
+        (json!({"max_segments":16}), true),
+        (json!({"budget_ms":60000,"max_segments":32}), true),
+        (json!({"budget_ms":0}), false),
+        (json!({"budget_ms":60001}), false),
+        (json!({"max_segments":0}), false),
+        (json!({"max_segments":33}), false),
+        (json!({"budget_ms":null}), false),
+        (json!({"max_segments":null}), false),
+    ] {
+        let (status, result) = send(
+            &app,
+            "POST",
+            "/v1/databases/notes/compact",
+            input.clone(),
+            &[],
+        )
+        .await;
+        assert_eq!(
+            status,
+            if valid {
+                StatusCode::OK
+            } else {
+                StatusCode::BAD_REQUEST
+            },
+            "{input}: {result}"
+        );
+        if valid {
+            assert_eq!(result["complete"], true, "{result}");
+        } else {
+            assert_eq!(result["error"]["code"], "INVALID_REQUEST", "{result}");
+        }
+        let mut arguments = input;
+        arguments["database"] = json!("notes");
+        let invalid_type = arguments.as_object().unwrap().values().any(Value::is_null);
+        let (status, rpc) = send(
+            &app, "POST", "/mcp",
+            json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"database_compact","arguments":arguments,"_meta":meta()}}),
+            &[("mcp-protocol-version","2026-07-28"),("mcp-method","tools/call"),("mcp-name","database_compact"),("accept","application/json, text/event-stream")],
+        ).await;
+        assert_eq!(status, StatusCode::OK);
+        if valid {
+            assert_eq!(
+                rpc["result"]["structuredContent"]["result"]["complete"], true,
+                "{rpc}"
+            );
+        } else if invalid_type {
+            assert_eq!(rpc["error"]["code"], -32602, "{rpc}");
+        } else {
+            assert_eq!(rpc["result"]["isError"], true, "{rpc}");
+            assert_eq!(
+                rpc["result"]["structuredContent"]["error"]["code"], "INVALID_REQUEST",
+                "{rpc}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn http_and_mcp_logs_correlate_errors_without_request_content_or_tokens() {
     use std::io::{self, Write};
     use std::sync::Mutex;
