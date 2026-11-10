@@ -38,7 +38,9 @@ it discovers the `ponydb` skill; discovery does not verify database connectivity
 
 Paste this into your AI Agent:
 
-> Read https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md and help me install ponydb for this AI Agent. Choose CLI, stdio MCP or an existing HTTP MCP service for my environment, configure it, and verify a query. Ask me for any missing connection details.
+```text
+Read https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md and help me install ponydb for this AI Agent. Choose CLI, stdio MCP or an existing HTTP MCP service for my environment, configure it, and verify a query. Ask me for any missing connection details.
+```
 
 The [installation instructions for AI Agents](https://github.com/hackerneocom/ponydb/blob/main/docs/install-ponydb-with-ai.md) cover package selection, object storage configuration, client setup and verification.
 
