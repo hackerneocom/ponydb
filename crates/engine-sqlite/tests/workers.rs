@@ -237,18 +237,29 @@ async fn cpu_deadline_and_dropped_future_release_worker() {
         tokio::select! {_=&mut f=>panic!("unexpected completion"),_=tokio::time::sleep(Duration::from_millis(20))=>{}}
     }
     assert!(context.check().is_err());
-    tokio::time::sleep(Duration::from_millis(30)).await;
-    pool.prepare(
-        "a".into(),
-        "u".into(),
-        source(0, Duration::ZERO),
-        4096,
-        vec![sql("SELECT 1")],
-        ExecutionLimits::default(),
-        ctx(),
-    )
+    // Cancellation is immediate, but the worker releases admission after cleanup.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            match pool
+                .prepare(
+                    "a".into(),
+                    "u".into(),
+                    source(0, Duration::ZERO),
+                    4096,
+                    vec![sql("SELECT 1")],
+                    ExecutionLimits::default(),
+                    ctx(),
+                )
+                .await
+            {
+                Ok(_) => break,
+                Err(Error::Busy) => tokio::time::sleep(Duration::from_millis(10)).await,
+                Err(error) => panic!("request after cancellation failed: {error:?}"),
+            }
+        }
+    })
     .await
-    .unwrap();
+    .expect("cancelled worker did not release admission within 2 seconds");
 }
 
 #[tokio::test]
