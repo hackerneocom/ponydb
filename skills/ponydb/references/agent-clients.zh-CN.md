@@ -6,13 +6,10 @@
 
 ## 安装 PonyDB skill
 
-[PonyDB skill](../SKILL.md) 为长期数据库操作提供引导，并附带这些共用使用文档。
+[PonyDB skill](../SKILL.md) 为安装、配置和长期数据库操作提供引导，并附带
+[安装配置流程](setup.md)和这些共用使用文档。
 安装 skill 是向 Agent 添加操作指导；安装和配置 PonyDB 则是让数据库连接可用。
 两者可以独立完成。
-
-为用户安装 skill 前，先询问仅用于当前项目，还是全局供该用户的多个项目使用；
-用户已经指定范围时，无需重复询问。根据选择使用下方对应命令，然后在安装工具中
-选择目标 Agent。运行前提和支持的 Agent 见 [skills CLI 参考](https://github.com/vercel-labs/skills/blob/main/docs/commands.md)。
 
 当前项目安装：
 
@@ -37,8 +34,6 @@ npx skills add hackerneocom/ponydb --skill ponydb -g
 ```text
 请阅读 https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
 ```
-
-[AI Agent 安装指引](https://github.com/hackerneocom/ponydb/blob/main/docs/install-ponydb-with-ai.md)覆盖安装包选择、对象存储配置、客户端配置与验证。
 
 ## 选择接入方式
 

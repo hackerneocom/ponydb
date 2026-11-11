@@ -19,11 +19,11 @@ CLI、stdio MCP、HTTP 服务和 Docker 使用同一套配置格式。在这里�
 
 | 服务 | 部署形式 | 端点与设置 |
 | --- | --- | --- |
-| [RustFS](https://rustfs.com/)（自托管推荐） | 开源，自托管 | S3 API 地址，例如 `http://127.0.0.1:9000`；路径式寻址（`true`） |
-| [火山引擎 TOS](https://www.volcengine.com/product/tos)（中国区域推荐） | 托管云存储 | 地域 **S3** 端点，例如 `https://tos-s3-cn-beijing.volces.com`；签名地域须匹配 |
-| [Cloudflare R2](https://www.cloudflare.com/products/r2/)（非中国区域推荐） | 托管云存储 | `https://<account-id>.r2.cloudflarestorage.com`；签名地域为 `auto` |
-| [MinIO](https://www.min.io/) | 开源，自托管 | 自有 S3 API 地址；路径式寻址（`true`） |
-| [AWS S3](https://aws.amazon.com/s3/) | 托管云存储 | 地域端点，例如 `https://s3.us-east-1.amazonaws.com`；签名地域须匹配 |
+| [RustFS](https://rustfs.com/)（自托管推荐） | 开源，自托管 | S3 API 地址，例如 `http://127.0.0.1:9000`；签名地域须匹配服务端配置（默认 `us-east-1`）；默认使用路径式寻址，`storage.force_path_style = true`；虚拟主机式需配置服务端域名及 DNS/TLS，见 [S3 配置](https://docs.rustfs.com/en/administration/protocols/s3) |
+| [火山引擎 TOS](https://www.volcengine.com/product/tos)（中国区域推荐） | 托管云存储 | 地域 **S3** 端点，例如 `https://tos-s3-cn-beijing.volces.com`，不包含桶名，桶名通过独立字段提供；签名地域须匹配；要求虚拟主机式寻址，必须显式设置 `storage.force_path_style = false`（默认 `true`），否则会报 `InvalidPathAccess`；详见 [TOS 寻址要求](https://docs.volcengine.com/docs/torch-object-storage/when-accessing-tos-using-the-path-style-method-the-error-invalid-path-access?lang=zh)。 |
+| [Cloudflare R2](https://www.cloudflare.com/products/r2/)（非中国区域推荐） | 托管云存储 | S3 API 端点为 `https://<account-id>.r2.cloudflarestorage.com`；签名地域使用 `auto`；可沿用路径式寻址，`storage.force_path_style = true`，见 [S3 API 文档](https://developers.cloudflare.com/r2/api/s3/api/)；司法辖区受限桶须使用[对应端点](https://developers.cloudflare.com/r2/reference/data-location/#using-jurisdictions-with-the-s3-api)，如 `https://<account-id>.eu.r2.cloudflarestorage.com` |
+| [MinIO 社区版](https://github.com/minio/minio) | 开源，自托管；社区仓库已归档，停止维护 | 自有 S3 API 地址；签名地域按部署配置；默认使用路径式寻址，`storage.force_path_style = true`；虚拟主机式需配置 `MINIO_DOMAIN` 及 DNS/TLS，见[配置文档](https://github.com/minio/minio/blob/master/docs/config/README.md#domain) |
+| [AWS S3](https://aws.amazon.com/s3/) | 托管云存储 | 桶所在地域的 S3 API 端点，例如 `https://s3.us-east-1.amazonaws.com`；签名地域须与桶地域匹配；普通桶支持路径式（`storage.force_path_style = true`）和虚拟主机式（`false`）寻址，见[寻址文档](https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html) |
 
 > [!IMPORTANT]
 > 不要通过生命周期规则删除 ponydb 对象，应使用 ponydb GC 回收不再引用的数据。

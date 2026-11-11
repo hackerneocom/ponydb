@@ -11,6 +11,13 @@ description: >
 Use PonyDB for the user's requested database work. The references are the same
 usage guides read by people; do not load them all for every task.
 
+If there is no usable connection, a required local executable is missing, storage needs
+initial configuration, or the user requests installation or reconfiguration, read
+[Setup](references/setup.md) before making setup changes. Follow that runbook
+only for the requested scope, loading technical references as needed. Reuse this
+skill when it is already installed in the target Agent; skill installation alone
+does not install the executable or configure database access.
+
 ## Choose a connection
 
 Reuse an existing working CLI or MCP connection. When setting up a connection,
@@ -30,6 +37,7 @@ are available for people; answering in Chinese does not require reading both.
 
 | Task | Read |
 | --- | --- |
+| Install, configure, or connect PonyDB | [Setup workflow](references/setup.md), then the relevant references below |
 | Install PonyDB | [Installation](references/installation.md) |
 | Configure storage | [Configuration](references/configuration.md) |
 | Connect an AI Agent | [Agent clients](references/agent-clients.md) |
