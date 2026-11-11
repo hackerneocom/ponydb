@@ -2,6 +2,9 @@ name: Windows S3 diagnostic CLI
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['hackerneocom/fix_network_error']
+    paths: ['.github/workflows/windows-diagnostics.yml']
 
 permissions:
   contents: read
