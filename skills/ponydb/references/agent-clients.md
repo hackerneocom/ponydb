@@ -6,16 +6,11 @@ Give an AI Agent persistent SQL context through the CLI or MCP. Claude Code, Cod
 
 ## Install the PonyDB skill
 
-The [PonyDB skill](../SKILL.md) guides ongoing database work and includes these
-shared usage guides. Installing the skill adds instructions to an Agent; installing
-and configuring PonyDB makes the database connection available. Either can be
-done independently.
-
-Before installing the skill for a user, ask whether it should be available only
-in the current project or globally across that user's projects, unless the user
-has already specified the scope. Use the matching command below, then select the
-intended Agent in the installer. See the [skills CLI reference](https://github.com/vercel-labs/skills/blob/main/docs/commands.md)
-for prerequisites and supported Agents.
+The [PonyDB skill](../SKILL.md) guides installation, configuration and ongoing
+database work, and includes the [setup runbook](setup.md) and these shared usage
+guides. Installing the skill adds instructions to an Agent; installing and
+configuring PonyDB makes the database connection available. Either can be done
+independently.
 
 Project installation:
 
@@ -41,8 +36,6 @@ Paste this into your AI Agent:
 ```text
 Read https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md and help me install ponydb for this AI Agent. Choose CLI, stdio MCP or an existing HTTP MCP service for my environment, configure it, and verify a query. Ask me for any missing connection details.
 ```
-
-The [installation instructions for AI Agents](https://github.com/hackerneocom/ponydb/blob/main/docs/install-ponydb-with-ai.md) cover package selection, object storage configuration, client setup and verification.
 
 ## Choose a connection
 
