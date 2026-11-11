@@ -44,7 +44,7 @@ Use ponydb for:
 Ask Claude Code, Codex, WorkBuddy or DeepSeek Harness to set up ponydb:
 
 ```text
-Read https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md and help me install ponydb for this AI Agent. Choose CLI, stdio MCP or an existing HTTP MCP service for my environment, configure it, and verify a query. Ask me for any missing connection details.
+Read https://raw.githubusercontent.com/hackerneocom/ponydb/main/skills/ponydb/references/setup.md and help me install ponydb for this AI Agent. Choose CLI, stdio MCP or an existing HTTP MCP service for my environment, configure it, and verify a query. Ask me for any missing connection details.
 ```
 
 For manual setup, see [AI Agent clients](skills/ponydb/references/agent-clients.md): shell-based CLI use, client-specific stdio MCP configuration, HTTP MCP requirements and example prompts. A remote HTTP MCP client needs only the service URL and token; install the CLI on the service host, or deploy the Docker image.

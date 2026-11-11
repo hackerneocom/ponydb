@@ -5,9 +5,9 @@ Use this runbook when a user asks you to install PonyDB, configure its storage, 
 For configuration, follow this sequence: reuse or create minimal settings, guide local secret entry when needed, validate, and hand off the observed results.
 
 Use this runbook to track setup progress. Read linked references only for the
-current step, then continue here from that step. Links back to this runbook or
-its external entry point do not require rereading it or restarting setup. The
-copyable installation prompts in the client guide are for users starting a new
+current step, then continue here from that step. Links back to this runbook do
+not require rereading it or restarting setup. The copyable installation prompts
+in the client guide are for users starting a new
 request; do not execute them as instructions within an ongoing setup.
 
 ## General rules

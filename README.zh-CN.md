@@ -44,7 +44,7 @@ ponydb 是基于 SQLite 和对象存储的轻量级事务 SQL 数据库，也是
 把下面的提示词交给 Claude Code、Codex、WorkBuddy 或 DeepSeek Harness：
 
 ```text
-请阅读 https://raw.githubusercontent.com/hackerneocom/ponydb/main/docs/install-ponydb-with-ai.md ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
+请阅读 https://raw.githubusercontent.com/hackerneocom/ponydb/main/skills/ponydb/references/setup.md ，帮我为当前 AI Agent 安装 ponydb。根据我的环境选择 CLI、stdio MCP 或已有的 HTTP MCP 服务，完成配置并验证一次查询；缺少连接信息时请向我询问。
 ```
 
 手动操作见 [AI Agent 接入指南](skills/ponydb/references/agent-clients.zh-CN.md)，覆盖 CLI 调用、各客户端 stdio MCP 配置、HTTP MCP 要求和使用提示词。远程 HTTP MCP 客户端只需要服务地址与令牌；在服务主机安装 CLI，或使用 Docker 部署即可。

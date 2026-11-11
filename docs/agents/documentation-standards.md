@@ -9,7 +9,6 @@ Read when writing, editing, or reviewing documentation.
 - Organize Agent documentation by purpose and audience:
   - `docs/agents/`: guidance for Agents developing PonyDB source code. Use root or directory-scoped `AGENTS.md` files as entry points linking to the relevant references.
   - [`skills/ponydb/`](../../skills/ponydb/SKILL.md): the independently installable Agent Skill for PonyDB users, including its [setup runbook](../../skills/ponydb/references/setup.md) and usage references. Keep the complete skill directory together so it can be installed and used independently of the source checkout.
-  - [`docs/install-ponydb-with-ai.md`](../install-ponydb-with-ai.md): the compatibility entry point directing external Agents to the setup runbook bundled with the skill.
 - Preserve these locations when editing documentation. An Agent audience alone is not a reason to move user Skill content or the setup runbook into `docs/agents/`.
 - Keep human-facing documentation focused on how to use the project. Do not include implementation details; put source-development guidance for AI Agents in `docs/agents/`.
 
