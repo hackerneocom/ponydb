@@ -152,6 +152,8 @@ Run these checks in the intended runtime with the installed executable and confi
 
 If validation fails, resolve the failed permission, addressing, or conditional-write check before continuing with that storage setup. Never bypass a failed storage contract. When connecting to an existing HTTP service without service-host access, report storage validation as not independently verified.
 
+If object storage requests still fail after multiple retries, pause further retries and prompt the user to check network, proxy, and VPN settings as described in [configuration troubleshooting](configuration.md#check-and-adjust-settings).
+
 ## 5. Verify Agent connectivity
 
 Follow [AI Agent clients](agent-clients.md) for the selected client's configuration, preserving existing entries:

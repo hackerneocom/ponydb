@@ -103,6 +103,8 @@ ponydb config validate --target server
 
 `config show` 可离线运行，始终隐藏凭证和认证 token。`config validate` 检查配置，并在所配置的前缀下创建临时对象执行真实 S3 检查，包含一个 2 MiB 对象。它需要 List/Get/Put/Delete 权限，并会清理探测对象；执行被中断时可能留下探测对象。`--target server` 或 `all` 还检查服务认证配置。
 
+若多次重试后仍遇到对象存储服务请求失败，暂停继续重试，并提示用户检查运行 PonyDB 的主机上的网络连接、代理及 VPN 设置。这些设置可能影响对所配置 S3 端点的访问；再次重试前，应从 PonyDB 实际运行的环境中确认网络连通性。
+
 常用设置：
 
 | 配置项 | 默认值 | 用途 |
