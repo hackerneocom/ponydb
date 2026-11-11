@@ -103,6 +103,8 @@ ponydb config validate --target server
 
 `config show` works offline and always redacts credentials and authentication tokens. `config validate` checks settings and performs live S3 checks using temporary objects under the configured prefix, including a 2 MiB object. It requires List/Get/Put/Delete permissions and cleans up its probe objects; an interrupted run can leave probe objects behind. `--target server` or `all` also checks server authentication.
 
+If requests to the object storage service keep failing after multiple retries, pause further retries and ask the user to check network connectivity, proxy settings, and VPN settings on the host running PonyDB. These settings may affect access to the configured S3 endpoint; verify connectivity from the environment where PonyDB runs before retrying.
+
 Common settings:
 
 | Setting | Default | Use |

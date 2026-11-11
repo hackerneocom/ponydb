@@ -5,9 +5,9 @@ Use this runbook when a user asks you to install PonyDB, configure its storage, 
 For configuration, follow this sequence: reuse or create minimal settings, guide local secret entry when needed, validate, and hand off the observed results.
 
 Use this runbook to track setup progress. Read linked references only for the
-current step, then continue here from that step. Links back to this runbook or
-its external entry point do not require rereading it or restarting setup. The
-copyable installation prompts in the client guide are for users starting a new
+current step, then continue here from that step. Links back to this runbook do
+not require rereading it or restarting setup. The copyable installation prompts
+in the client guide are for users starting a new
 request; do not execute them as instructions within an ongoing setup.
 
 ## General rules
@@ -21,6 +21,15 @@ request; do not execute them as instructions within an ongoing setup.
 - Distinguish PonyDB installation, configuration, storage validation, Agent connectivity, query verification, and skill installation. Report only outcomes actually verified.
 - If tools, permissions, or credentials are unavailable, explain the blocker and report completed steps without claiming full success.
 
+### Handle execution restrictions
+
+Keep the intended installation environment and persistent destinations when an operation is blocked. Authorization to install PonyDB does not itself grant the Agent's tools access outside their sandbox.
+
+- If filesystem access, PATH updates, or network requests are blocked by the execution environment, use its approval mechanism for the specific required operation when supported and permitted. Explain the operation, destination or network endpoint, and why access is needed. Retry after approval; do not default to administrator access or disabling the sandbox.
+- If approval is unavailable, prohibited by session policy, or denied, explain the restriction and provide exact commands or local editing steps for the user to perform in the intended environment. Continue independent work and leave dependent steps pending. Do not repeatedly request unavailable permissions or treat an unanswered request as approval.
+- Temporary directories may hold downloads and extracted packages. Do not silently substitute a temporary directory, workspace, or application-private location for the intended persistent executable or configuration location. If a different destination or installation scope is needed, explain the change and obtain agreement unless already authorized.
+- Distinguish execution restrictions from other failures such as an invalid URL, TLS errors, or rejected storage credentials. Request broader execution access only when evidence indicates it is needed; never expose secrets while diagnosing failures.
+
 ### Ask questions users can answer directly
 
 Prefer short questions in normal conversation so the user can reply directly. Use a dedicated question tool only when the current client clearly displays the question and choices. If its presentation is unknown or questions appear only in a queued-input indicator, include the question in the visible handoff message.
@@ -33,6 +42,8 @@ Prefer short questions in normal conversation so the user can reply directly. Us
 ## 1. Inspect and choose a connection
 
 Identify the OS, CPU architecture, AI Agent client and version, and where its tools run. Check whether `ponydb version` already works in that environment. Inspect existing PonyDB configuration and client connections without exposing secrets.
+
+Identify the intended runtime and user account: the host terminal, Agent shell, WSL, container, MCP client process, or service host. Establish persistent executable and configuration destinations and whether the user needs `ponydb` available by name in a host terminal. Infer these from the request and existing setup where possible; ask only when the target remains ambiguous. Inspect available filesystem, network, and approval capabilities before dependent operations. A working command in the Agent's environment does not establish host availability.
 
 Choose based on the user's goal and the capabilities of the environment where tools run:
 
@@ -64,7 +75,11 @@ For an existing HTTP service, establish the service URL and token source without
 
 Reuse a working installation unless the requested setup requires a different version. For a new installation, establish the requested release or select a published stable release before reading detailed setup references. For CLI or stdio MCP, install where the Agent's commands or client process run. For a new HTTP service, install on the service host.
 
-Follow [CLI installation](installation.md): select the release package for the OS and architecture, verify it against `SHA256SUMS`, extract the binary, and put it on PATH. If no suitable package is available, follow the source-build instructions from the selected release's checkout. Run `ponydb version` to verify the executable.
+Follow [CLI installation](installation.md): select the release package for the OS and architecture, verify it against `SHA256SUMS`, extract the binary, and place it in the intended persistent installation directory. If no suitable package is available, follow the source-build instructions from the selected release's checkout. Verify the installed executable with its absolute path and the `version` subcommand. Running a binary from the download or extraction directory verifies that binary, not a completed installation.
+
+For command-name CLI use, add the installation directory to the intended user's persistent PATH, preserving existing entries and avoiding duplicates. A change to the current process PATH is only a session convenience. Verify command resolution and `ponydb version` from a fresh terminal in the intended environment; check that the resolved executable is the installed one. On Windows, prefer user PATH over system PATH unless the requested scope requires otherwise. An Agent-launched child shell can inherit its parent's environment, so it is not sufficient proof that an independently opened host terminal will resolve the command.
+
+For stdio MCP, configure an absolute executable path; PATH modification is not required solely for that connection. If required PATH access is blocked, follow [execution restrictions](#handle-execution-restrictions). Continue checks using the installed absolute path where possible, but report PATH setup separately as pending until verified.
 
 Read linked documentation from the same release tag or checkout as the selected binary. Read bundled references locally when available. When following links remotely, resolve them relative to this file in that version of the PonyDB repository. Read only the references needed for the selected mode and current step; CLI setup does not require reviewing every MCP client's settings or maintainer release procedures.
 
@@ -82,11 +97,17 @@ Before local credential entry, explain that the credential's identity needs List
 
 When a new configuration is needed:
 
-1. Reuse the user's credential mechanism when available. Otherwise, recommend the documented [platform default path](configuration.md#configuration-file) rather than asking the user to choose between files and environment variables. Once the endpoint, existing bucket, and intended prefix are established, create the file there, or use a private location outside the repository selected with an absolute `PONYDB_CONFIG` or `--config` path. Restrict file access to the intended user or service account.
+1. Reuse the user's credential mechanism when available. Otherwise, recommend the documented [platform default path](configuration.md#configuration-file) for the intended runtime and user account rather than asking the user to choose between files and environment variables. Once the endpoint, existing bucket, and intended prefix are established, create the file there, or use an agreed persistent private location outside the repository selected with an absolute `PONYDB_CONFIG` or `--config` path. Follow [execution restrictions](#handle-execution-restrictions) if access is blocked. Restrict file access to the intended user or service account.
 2. Fill in known non-secret settings, including the endpoint, existing bucket, and intended prefix. Add region or addressing overrides only when the defaults do not fit the provider. Preserve the intended prefix even when it differs from the default.
 3. Leave clearly marked credential placeholders for local editing, or omit credential fields when credentials will be injected through PonyDB's supported environment variables.
 4. Give the user the absolute file path and exact field names or environment variable names to fill in. Have them edit the file locally or use their existing secret mechanism. Do not ask them to paste the resulting file or secret values into chat. Explain that they can reply “credentials entered” when done and that you will then validate storage.
 5. If user entry is needed, wait for confirmation that it is complete before running live checks. Placeholders are not working credentials. Continue independent setup while waiting and report dependent checks as pending. Do not present a configuration with an unknown endpoint or bucket as ready for credential entry.
+
+On Windows, verify the configuration destination before directing the user to enter secrets. Packaged desktop applications can redirect AppData writes into application-private storage. A path containing `LocalCache\Roaming`, for example, is a reason to check visibility; do not assume every client or Windows version behaves identically. Expanding `%APPDATA%`, using an absolute path, or successfully writing and reading the file from the same Agent environment does not prove it exists at the host user's expected location.
+
+For a host installation, check file visibility from an independently opened host terminal and use the intended PonyDB executable's redacted `config show --target cli` output to check the non-secret settings. Use the same configuration selection that ongoing use will rely on, including default discovery when applicable. Ask the user to perform this check if no suitable host execution tool is available; do not request file contents or credentials. Merely launching another shell from the desktop app or receiving sandbox approval does not prove that application-level redirection has ended.
+
+If the default location is redirected, arrange creation in the intended host location or agree on a persistent private location accessible to both the user and the runtime, using `--config` or `PONYDB_CONFIG`. Update the actual CLI or MCP invocation consistently. Do not hand off an unverified application-private path as the host default. Until checked, report “configuration accessible in the Agent environment; host visibility unverified.”
 
 For example, with an AWS S3 bucket in `us-east-1`, default path-style addressing, and an intentionally empty prefix, the file needs only:
 
@@ -123,13 +144,15 @@ ponydb --config /absolute/path/ponydb.toml config show --target cli
 ponydb --config /absolute/path/ponydb.toml config validate --target cli
 ```
 
-Use `--target server` on the service host when validating a deployment; it also checks server authentication. Adapt these commands if the setup uses environment variables instead of a file.
+Run these checks in the intended runtime with the installed executable and configuration selection that ongoing use will rely on. Use its absolute executable path if PATH is not yet verified. Use `--target server` on the service host when validating a deployment; it also checks server authentication. Adapt these commands if the setup uses environment variables or default file discovery instead of an explicit file path. A successful probe in a temporary setup environment does not verify the target runtime.
 
 `config show` works offline and redacts secrets. Success means the configuration loaded, not that the endpoint, credentials, permissions, or storage capabilities are usable. Report “configuration loaded; live storage validation pending” until the live probe succeeds, and report file creation separately.
 
 `config validate` performs real reads, writes, conditional writes, listing, and deletion under a temporary probe prefix within the configured storage prefix. It requires List/Get/Put/Delete permissions and cleans up its probe objects; an interrupted run can leave probe objects behind. It does not create a database.
 
 If validation fails, resolve the failed permission, addressing, or conditional-write check before continuing with that storage setup. Never bypass a failed storage contract. When connecting to an existing HTTP service without service-host access, report storage validation as not independently verified.
+
+If object storage requests still fail after multiple retries, pause further retries and prompt the user to check network, proxy, and VPN settings as described in [configuration troubleshooting](configuration.md#check-and-adjust-settings).
 
 ## 5. Verify Agent connectivity
 
@@ -173,6 +196,8 @@ Reload the Agent if required and verify that it discovers the `ponydb` skill. If
 ## 8. Hand off
 
 Report each stage as verified, pending, failed, or not applicable: PonyDB installation, configuration, storage validation, Agent connectivity, query verification, and skill installation. Include the observed version, selected mode, configuration location, database used, and query result where verified. Report the skill's project or global scope, installation location, and discovery result when applicable. For an existing HTTP service, distinguish the service version from any local CLI version.
+
+For local installations, include the persistent executable path, intended runtime and user account, and environment in which checks ran. Report executable verification, persistent PATH availability when required, and configuration visibility in the target environment separately. A temporary binary, process-only PATH change, or configuration visible only inside the Agent cannot establish a completed host installation. Name any remaining permission or visibility blocker and the exact next action needed.
 
 For MCP, report tool discovery, operation authorization (including any `database_list` denial or skipped check), and query execution separately. A forbidden database listing must not mark Agent connectivity as failed when tool discovery succeeds; query access is verified only by a successful query on an explicitly authorized database.
 
