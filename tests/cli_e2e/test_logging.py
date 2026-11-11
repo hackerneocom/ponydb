@@ -22,8 +22,12 @@ class LoggingTests(CliTestCase):
             check(summaries[0]['fields']['outcome'] == 'read_only', level + ': incorrect outcome')
             check(summaries[0]['fields']['s3_requests'] > 0, level + ': missing S3 count')
             check(summaries[0]['fields']['page_reads'] > 0, level + ': missing page count')
-            for marker in ('DO_NOT_LOG_SQL', 'DO_NOT_LOG_VALUE', self.access, self.secret, self.endpoint, str(self.config)):
+            for marker in ('DO_NOT_LOG_SQL', 'DO_NOT_LOG_VALUE', self.access, self.secret, str(self.config)):
                 check(marker not in process.stderr, level + ': prohibited field in diagnostics')
+            for event in events:
+                # Failed SDK calls now include a sanitized endpoint for diagnosis.
+                if event.get('fields', {}).get('event') != 's3_request_failed':
+                    check(self.endpoint not in json.dumps(event), level + ': endpoint outside failure diagnostic')
             detail = any(event.get('fields', {}).get('event') == 's3_request_completed' for event in events)
             check(detail == (level == 'trace'), level + ': incorrect detail level')
             if level == 'trace':

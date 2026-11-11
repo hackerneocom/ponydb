@@ -11,89 +11,10 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use object_store_api::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{
-    ops::Range,
-    sync::{
-        atomic::{AtomicU16, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+use std::{ops::Range, sync::Arc, time::Duration};
 
-// Observe only the numeric response status. Request/response contents stay opaque.
-#[derive(Debug)]
-struct ResponseStatus(Arc<AtomicU16>);
-impl aws_sdk_s3::config::Intercept for ResponseStatus {
-    fn name(&self) -> &'static str {
-        "ponydb_response_status"
-    }
-    fn read_after_transmit(
-        &self,
-        context: &aws_sdk_s3::config::interceptors::BeforeDeserializationInterceptorContextRef<'_>,
-        _: &aws_sdk_s3::config::RuntimeComponents,
-        _: &mut aws_sdk_s3::config::ConfigBag,
-    ) -> Result<(), aws_sdk_s3::error::BoxError> {
-        self.0
-            .store(context.response().status().as_u16(), Ordering::Relaxed);
-        Ok(())
-    }
-}
-
-// One event per logical SDK call. Never format SDK requests, responses or errors.
-struct S3Request {
-    operation: &'static str,
-    key: Option<String>,
-    started: std::time::Instant,
-    attempted: bool,
-    status: Arc<AtomicU16>,
-    outcome: &'static str,
-    bytes: u64,
-}
-impl S3Request {
-    fn new(operation: &'static str, key: impl FnOnce() -> String) -> Self {
-        Self {
-            operation,
-            key: tracing::enabled!(target: "ponydb::s3", tracing::Level::TRACE).then(key),
-            started: std::time::Instant::now(),
-            attempted: false,
-            status: Arc::new(AtomicU16::new(0)),
-            outcome: "aborted",
-            bytes: 0,
-        }
-    }
-    fn status_recorder(&self) -> ResponseStatus {
-        ResponseStatus(self.status.clone())
-    }
-    fn attempt(&mut self) {
-        self.attempted = true;
-        observability::count(observability::Counter::S3Requests, 1);
-    }
-    fn error<E: ProvideErrorMetadata>(&mut self, error: &SdkError<E>) {
-        if let Some(response) = error.raw_response() {
-            self.status
-                .store(response.status().as_u16(), Ordering::Relaxed);
-        }
-    }
-    fn finish(&mut self, outcome: &'static str, bytes: u64, write: bool) {
-        self.outcome = outcome;
-        self.bytes = bytes;
-        observability::count(
-            if write {
-                observability::Counter::S3WriteBytes
-            } else {
-                observability::Counter::S3ReadBytes
-            },
-            bytes,
-        );
-    }
-}
-impl Drop for S3Request {
-    fn drop(&mut self) {
-        tracing::trace!(target: "ponydb::s3", event = "s3_request_completed", operation = self.operation,
-            key = self.key.as_deref(), attempted = self.attempted, status = match self.status.load(Ordering::Relaxed) { 0 => None, status => Some(status) },
-            outcome = self.outcome, bytes = self.bytes, elapsed_ms = self.started.elapsed().as_millis() as u64);
-    }
-}
+mod diagnostics;
+use diagnostics::S3Request;
 fn error_category(error: &StoreError) -> &'static str {
     match error {
         StoreError::NotFound => "not_found",
@@ -120,6 +41,7 @@ pub struct S3Config {
 #[derive(Clone)]
 pub struct S3Store {
     client: Client,
+    endpoint: String,
     bucket: String,
     prefix: String,
     scope: RevisionScope,
@@ -193,6 +115,7 @@ impl S3Store {
             .build();
         Ok(Self {
             client: Client::from_conf(sdk),
+            endpoint: endpoint.to_string(),
             bucket: config.bucket,
             prefix,
             scope: RevisionScope::new("s3", &scope_id),
@@ -236,10 +159,7 @@ impl S3Store {
         }
     }
     fn sanitize(&self, value: &str, limit: usize) -> String {
-        let mut value = value.to_owned();
-        for secret in self.secrets.iter() {
-            value = value.replace(secret, "[REDACTED]");
-        }
+        let value = diagnostics::redact(value, &self.secrets);
         let mut chars = value.chars().map(|c| if c.is_control() { ' ' } else { c });
         let mut result: String = chars.by_ref().take(limit).collect();
         if chars.next().is_some() {
@@ -284,19 +204,14 @@ impl S3Store {
                 request.if_none_match("*")
             };
             io.attempt();
-            match request
-                .customize()
-                .interceptor(io.status_recorder())
-                .send()
-                .await
-            {
+            match request.customize().interceptor(io.recorder()).send().await {
                 Ok(r) => CasOutcome::Applied {
                     new_revision: r
                         .e_tag()
                         .map(|etag| self.scope.issue(key, S3Revision(etag.into()))),
                 },
                 Err(e) => {
-                    io.error(&e);
+                    io.error(&e, self);
                     let outcome = classify_write(
                         e.raw_response().map(|r| r.status().as_u16()),
                         matches!(e, SdkError::ConstructionFailure(_)),
@@ -393,11 +308,11 @@ impl BlobStore for S3Store {
                 .bucket(&self.bucket)
                 .key(physical)
                 .customize()
-                .interceptor(io.status_recorder())
+                .interceptor(io.recorder())
                 .send()
                 .await
                 .map_err(|e| {
-                    io.error(&e);
+                    io.error(&e, self);
                     self.read_error("GetObject", &e)
                 })?;
             let size = r
@@ -452,11 +367,11 @@ impl BlobStore for S3Store {
                 .key(physical)
                 .range(format!("bytes={}-{}", range.start, range.end - 1))
                 .customize()
-                .interceptor(io.status_recorder())
+                .interceptor(io.recorder())
                 .send()
                 .await
                 .map_err(|e| {
-                    io.error(&e);
+                    io.error(&e, self);
                     self.read_error("GetObject", &e)
                 })?;
             let expected = format!("bytes {}-{}/", range.start, range.end - 1);
@@ -536,11 +451,11 @@ impl BlobStore for S3Store {
                 .set_continuation_token(token)
                 .max_keys(request.limit as i32)
                 .customize()
-                .interceptor(io.status_recorder())
+                .interceptor(io.recorder())
                 .send()
                 .await
                 .map_err(|e| {
-                    io.error(&e);
+                    io.error(&e, self);
                     self.read_error("ListObjectsV2", &e)
                 })?;
             let relative = |key: &str| -> Result<String, StoreError> {
@@ -602,13 +517,13 @@ impl BlobStore for S3Store {
                 .bucket(&self.bucket)
                 .key(physical)
                 .customize()
-                .interceptor(io.status_recorder())
+                .interceptor(io.recorder())
                 .send()
                 .await
             {
                 Ok(_) => DeleteOutcome::Deleted, // S3 treats deleting an absent key as success.
                 Err(e) => {
-                    io.error(&e);
+                    io.error(&e, self);
                     match e.raw_response().map(|r| r.status().as_u16()) {
                         Some(404) => DeleteOutcome::Missing,
                         Some(401 | 403 | 429) => {
@@ -720,7 +635,7 @@ mod diagnostic_tests {
     async fn response(status: u16, body: &str) -> (S3Store, tokio::task::JoinHandle<()>) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
-        let response = format!("HTTP/1.1 {status} Error\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\nX-Private: header-secret\r\n\r\n{body}", body.len());
+        let response = format!("HTTP/1.1 {status} Error\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\nX-Private: header-secret\r\nx-amz-request-id: server-test-request\r\n\r\n{body}", body.len());
         let server = tokio::spawn(async move {
             let (mut stream, _) = listener.accept().await.unwrap();
             let mut request = Vec::new();
@@ -887,5 +802,176 @@ mod diagnostic_tests {
             }
             server.await.unwrap();
         }
+    }
+
+    #[derive(Clone, Default)]
+    struct LogBuffer(Arc<std::sync::Mutex<Vec<u8>>>);
+    impl std::io::Write for LogBuffer {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogBuffer {
+        type Writer = Self;
+        fn make_writer(&'a self) -> Self {
+            self.clone()
+        }
+    }
+
+    async fn failure_log(store: &S3Store) -> serde_json::Value {
+        use tracing::{instrument::WithSubscriber, Instrument};
+        use tracing_subscriber::{layer::SubscriberExt, Layer};
+        let buffer = LogBuffer::default();
+        let subscriber = tracing_subscriber::registry().with(
+            tracing_subscriber::fmt::layer()
+                .json()
+                .with_writer(buffer.clone())
+                .with_filter(tracing_subscriber::filter::filter_fn(|meta| {
+                    meta.target().starts_with("ponydb")
+                })),
+        );
+        async {
+            let span =
+                tracing::info_span!(target: "ponydb", "request", request_id = "diagnostic-test");
+            assert!(store.read_current("object").instrument(span).await.is_err());
+        }
+        .with_subscriber(subscriber)
+        .await;
+        let output = String::from_utf8(buffer.0.lock().unwrap().clone()).unwrap();
+        for secret in [
+            "test-access",
+            "test-session",
+            "header-secret",
+            "body-secret",
+            "unknown-signature",
+            "unknown-auth",
+        ] {
+            assert!(!output.contains(secret), "leaked {secret}: {output}");
+        }
+        let event = output
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find(|value| value["fields"]["event"] == "s3_request_failed")
+            .expect("failure diagnostic");
+        assert_eq!(event["span"]["request_id"], "diagnostic-test");
+        let fields = &event["fields"];
+        assert_eq!(fields["attempts"], 1);
+        assert_eq!(fields["hostname"], "127.0.0.1");
+        assert!(fields["port"].as_u64().unwrap() > 0);
+        assert_eq!(fields["timeout_config_observed"], true);
+        assert_eq!(fields["connect_timeout_ms"], 3100);
+        assert!(fields["read_timeout_ms"].is_null());
+        assert_eq!(
+            fields["operation_timeout_ms"],
+            store
+                .client
+                .config()
+                .timeout_config()
+                .unwrap()
+                .operation_timeout()
+                .unwrap()
+                .as_millis() as u64
+        );
+        assert_eq!(
+            fields["operation_attempt_timeout_ms"],
+            fields["operation_timeout_ms"]
+        );
+        event
+    }
+
+    #[tokio::test]
+    async fn failure_event_preserves_response_metadata_and_redacts_sources() {
+        let (store, server) = response(403, "<Error><Code>Denied</Code><Message>test-access-secret test-session Authorization: unknown-auth X-Amz-Signature=unknown-signature</Message><Resource>body-secret</Resource></Error>").await;
+        let event = failure_log(&store).await;
+        let fields = &event["fields"];
+        assert_eq!(fields["sdk_error_type"], "ServiceError");
+        assert_eq!(fields["status"], 403);
+        assert_eq!(fields["server_request_id"], "server-test-request");
+        let chain: serde_json::Value =
+            serde_json::from_str(fields["error_chain"].as_str().unwrap()).unwrap();
+        assert_eq!(chain[0]["message"], "service error");
+        assert!(chain.as_array().unwrap().len() >= 2);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failure_event_preserves_dispatch_sources_and_operation_timeouts() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            // Close without any HTTP response to exercise the real connector chain.
+            drop(stream);
+        });
+        let store = store(endpoint);
+        let event = failure_log(&store).await;
+        assert_eq!(event["fields"]["sdk_error_type"], "DispatchFailure");
+        let chain: serde_json::Value =
+            serde_json::from_str(event["fields"]["error_chain"].as_str().unwrap()).unwrap();
+        assert!(chain.as_array().unwrap().len() >= 3);
+        server.await.unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut store = store;
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        store.endpoint = endpoint.clone();
+        store.client = Client::from_conf(
+            store
+                .client
+                .config()
+                .to_builder()
+                .endpoint_url(endpoint)
+                .timeout_config(
+                    TimeoutConfig::builder()
+                        .operation_timeout(Duration::from_millis(50))
+                        .operation_attempt_timeout(Duration::from_millis(50))
+                        .build(),
+                )
+                .build(),
+        );
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            std::future::pending::<()>().await;
+        });
+        let event = failure_log(&store).await;
+        assert_eq!(event["fields"]["sdk_error_type"], "TimeoutError");
+        assert_eq!(event["fields"]["operation_timeout_ms"], 50);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn stalled_tls_handshake_uses_the_sdk_default_connect_timeout() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("https://{}", listener.local_addr().unwrap());
+        let mut store = store(endpoint);
+        store.client = Client::from_conf(
+            store
+                .client
+                .config()
+                .to_builder()
+                .timeout_config(
+                    TimeoutConfig::builder()
+                        .operation_timeout(Duration::from_secs(5))
+                        .operation_attempt_timeout(Duration::from_secs(5))
+                        .build(),
+                )
+                .build(),
+        );
+        let server = tokio::spawn(async move {
+            let (_stream, _) = listener.accept().await.unwrap();
+            // TCP connects, but the server never answers the TLS ClientHello.
+            std::future::pending::<()>().await;
+        });
+        let event = failure_log(&store).await;
+        let fields = &event["fields"];
+        assert_eq!(fields["sdk_error_type"], "DispatchFailure");
+        assert_eq!(fields["dispatch_error_kind"], "timeout");
+        assert!(fields["elapsed_ms"].as_u64().unwrap() >= 3000);
+        assert!(fields["error_chain"].as_str().unwrap().contains("3.1s"));
+        server.abort();
     }
 }

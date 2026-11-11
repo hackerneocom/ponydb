@@ -99,6 +99,8 @@ secret_access_key = "<secret-access-key>"
 
 See [Configuration](skills/ponydb/references/configuration.md) for more details.
 
+For S3 connection failures, set `PONYDB_LOGGING__LEVEL=debug` to record sanitized SDK error chains and effective timeouts. See [runtime logs](apps/cli/README.md#runtime-logs), including PowerShell usage.
+
 These commands use a POSIX shell; on Windows, use your shell's environment-variable syntax.
 
 ```sh

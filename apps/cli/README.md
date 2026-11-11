@@ -221,8 +221,20 @@ PONYDB_LOGGING__LEVEL=debug ponydb db notes execute "SELECT 1"
 PONYDB_LOGGING__LEVEL=trace PONYDB_LOGGING__FORMAT=text ponydb db notes execute "SELECT 1"
 ```
 
-Debug records request IDs, anonymous database identifiers, operation/phase transitions, queue and execution times, publication outcomes, data versions and request-level I/O/cache totals. Trace additionally records each pager/remote-page operation, S3 call and cache lookup/fill/eviction/bypass. S3 events include the actual object key (or LIST prefix), including the configured storage prefix; cache events use backend-relative keys. Keys escape control characters. Trace is intentionally detailed; debug omits these per-operation events. Health checks, ping and progress refreshes do not produce request logs.
+Debug records request IDs, anonymous database identifiers, operation/phase transitions, queue and execution times, publication outcomes, data versions and request-level I/O/cache totals. Trace additionally records each pager/remote-page operation, S3 call and cache lookup/fill/eviction/bypass. S3 events include the actual object key (or LIST prefix), including the configured storage prefix; cache events use backend-relative keys. Keys escape control characters. Trace is intentionally detailed; debug omits successful per-operation events. Health checks, ping and progress refreshes do not produce request logs.
 
-No level records SQL, parameters, result contents, metadata, descriptions, credentials, tokens, request headers, URLs, local paths or content checksums. Object keys may contain database names and are explicitly permitted. Standalone database identifiers are anonymized consistently within one process, using a private random salt. Dependency logs are disabled even at trace. API errors and restore progress are written separately to stderr; JSON logs are one object per line.
+No level records SQL, parameters, result contents, metadata, descriptions, credentials, tokens, request headers, complete request URLs, local paths or content checksums. Object keys may contain database names and are explicitly permitted. Standalone database identifiers are anonymized consistently within one process, using a private random salt. Dependency logs are disabled even at trace. API errors and restore progress are written separately to stderr; JSON logs are one object per line.
 
 Summary counts describe operations rather than unique pages/objects. Pager access and remote-page reads are separate totals; S3 byte counts include successfully verified reads and confirmed writes. Cache coalescing counts as an initial miss; disk bypasses include unavailable read/write attempts. A dropped request records `aborted`, without claiming whether a write committed. Unknown publication outcomes remain `unknown` until confirmed.
+
+S3 SDK failures additionally emit `s3_request_failed` at debug or trace. This diagnostic includes the endpoint, actual hostname/port, environment proxy selection, SDK variant/dispatch category, elapsed time, SDK attempt count, effective timeouts, HTTP status/server request ID when available, and a sanitized complete error chain. `error_chain` is a JSON-encoded array; I/O entries include `io_kind` and available `raw_os_error`. When `timeout_config_observed=true`, missing timeout fields mean disabled. The current SDK defaults to a 3100ms connect timeout; CLI operation and operation-attempt timeouts are 10000ms. These logs preserve the existing timeout/retry behavior. See [S3 diagnostics](../../crates/object-store-s3/README.md#runtime-diagnostics) for redaction and field details.
+
+Capture a Windows failure in PowerShell:
+
+```powershell
+$env:PONYDB_LOGGING__LEVEL = "debug"
+$env:PONYDB_LOGGING__FORMAT = "json"
+.\ponydb.exe db agent_context schema --output json 2> ponydb-s3-diagnostic.log
+```
+
+The manual **Windows S3 diagnostic CLI** Actions workflow builds and tests the selected ref with Rust 1.95 and packages a Windows x64 MSVC CLI with a static CRT. Download its diagnostic artifact after the run succeeds. It does not publish a release. The same package can be built on a Windows development machine using `python scripts/release.py build --target x86_64-pc-windows-msvc` followed by `python scripts/release.py pack --target x86_64-pc-windows-msvc`.

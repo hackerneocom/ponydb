@@ -17,6 +17,8 @@ tokio.workspace = true
 
 base64 = "0.22"
 url = "2"
+regex-lite = "0.1"
+hyper-util = { version = "0.1", default-features = false, features = ["client-proxy"] }
 
 [dev-dependencies]
 remote-pager.workspace = true
@@ -24,3 +26,4 @@ engine-sqlite = { path = "../engine-sqlite" }
 object-store-test-support = { path = "../object-store-test-support" }
 request-context.workspace = true
 rusqlite.workspace = true
+tracing-subscriber.workspace = true

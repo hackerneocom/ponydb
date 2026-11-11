@@ -1597,9 +1597,11 @@ dependencies = [
  "aws-sdk-s3",
  "base64 0.22.1",
  "engine-sqlite",
+ "hyper-util",
  "object-store-api",
  "object-store-test-support",
  "observability",
+ "regex-lite",
  "remote-pager",
  "request-context",
  "rusqlite",
@@ -1608,6 +1610,7 @@ dependencies = [
  "sha2 0.10.9",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "url",
 ]
 

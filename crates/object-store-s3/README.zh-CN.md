@@ -30,10 +30,16 @@ ponydb 把 S3 当作事实来源。`head.json` 只通过 `If-Match` 前进。不
 
 `S3Config::max_object_bytes` 是能力上限（运行时配置目前传入 8 MiB）。`tests/live.rs` 中的真实契约测试默认忽略，除非设置了 `P0_S3_ENDPOINT` 和 AWS 凭证。
 
-对象存储错误使用统一的 JSON 错误字段和业务错误码。可用时，`message` 包含 S3 操作、HTTP 状态、服务端错误码及消息，例如 `S3 ListObjectsV2 failed (HTTP 403, SecondLevelDomainForbidden): Please use virtual hosted style to access.` 配置中的 AccessKey ID、Secret AccessKey 和 Session Token 替换为 `[REDACTED]`，控制字符替换为空格，服务端错误码/消息分别限制为 128/1024 个字符，超长追加省略号。这种最小脱敏不会隐藏服务端回显的所有资源信息。不附带请求头、响应头、原始响应正文或 SDK 错误链。远端 HTTP 错误中，408、429、5xx 可重试，其他状态不可重试；对象不存在、条件写和提交不确定的专门处理优先。CLI、HTTP 和 MCP 共享这些诊断。
+对象存储错误使用统一的 JSON 错误字段和业务错误码。可用时，`message` 包含 S3 操作、HTTP 状态、服务端错误码及消息，例如 `S3 ListObjectsV2 failed (HTTP 403, SecondLevelDomainForbidden): Please use virtual hosted style to access.` 配置中的 AccessKey ID、Secret AccessKey 和 Session Token 替换为 `[REDACTED]`，控制字符替换为空格，服务端错误码/消息分别限制为 128/1024 个字符，超长追加省略号。URL 用户信息、路径和查询串，以及敏感的授权、签名、令牌赋值也会脱敏；服务端回显的其他资源信息仍可能保留。业务错误不附带请求头、响应头、原始响应正文或 SDK 错误链。远端 HTTP 错误中，408、429、5xx 可重试，其他状态不可重试；对象不存在、条件写和提交不确定的专门处理优先。CLI、HTTP 和 MCP 共享这些诊断。
 
 `storage.force_path_style` 默认为 `true`，保留 MinIO 的 path-style 寻址。OSS 使用 virtual-hosted-style 时设为 `false`；区域端点（如 `https://oss-cn-beijing.aliyuncs.com`）和 bucket 仍分别配置，由 SDK 拼接桶域名。环境变量覆盖方式：`PONYDB_STORAGE__FORCE_PATH_STYLE=false`。配置值必须为布尔类型。
 
 ## 运行诊断
 
-trace 为每次适配器调用输出一条完成事件：操作、含部署前缀的实际 key（LIST 为前缀）、实际 HTTP 状态、结果、确认字节数及耗时。不格式化 SDK 请求、响应、请求头、错误正文或校验和；HTTP 状态通过只读 SDK interceptor 获取。 库不安装全局 subscriber。
+Debug 在将 SDK 失败转换为业务错误前记录 `s3_request_failed`，包含外围请求 ID、操作、耗时毫秒、SDK 尝试次数、endpoint、实际请求 hostname/端口、环境代理选择结果（考虑 `NO_PROXY`）、SDK 错误类型和 dispatch 分类（`timeout`、`io`、`user`、`other`）。代理判断遵循锁定版本 Smithy 默认客户端，不记录代理 URL 或凭证。构造失败可能为零次尝试，且没有 hostname。
+
+`error_chain` 是 JSON 编码的数组，按顺序包含顶层 `Display` 和每一层 `Error::source()`，不截断。I/O 错误额外包含 `io_kind` 和可用时的 `raw_os_error`。输出前替换配置凭证及其 URL 编码形式、URL 用户信息/路径/查询串，以及敏感的授权、签名、令牌赋值；控制字符替换为空格。不格式化请求、响应正文、对象内容或请求头/响应头集合。仅观察 HTTP 状态和白名单中的服务端请求 ID 头（`x-amz-request-id`、`x-oss-request-id`、`x-request-id`）。
+
+`timeout_config_observed=true` 表示四个 `*_timeout_ms` 字段来自 SDK 合并后的运行配置，此时缺少的超时字段表示禁用；否则表示无法获取配置。当前锁定 SDK 中，`BehaviorVersion::latest()` 提供 3100ms connect timeout，read timeout 禁用，CLI 配置的 operation 和 operation-attempt timeout 均为 10000ms。诊断不改变这些超时或单次尝试的重试策略。Connect timeout 可能覆盖 DNS、TCP、代理协商和 TLS，仅凭耗时不能定位失败层。
+
+Trace 另为每次适配器调用输出一条完成事件：操作、含部署前缀的实际 key（LIST 为前缀）、实际 HTTP 状态、结果、确认字节数及耗时。库不安装全局 subscriber，依赖库原始日志仍被过滤，未启用 DNS/TCP/TLS 分阶段日志。用法见 [CLI 运行日志](../../apps/cli/README.zh-CN.md#运行日志)。

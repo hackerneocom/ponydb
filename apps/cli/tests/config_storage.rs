@@ -128,14 +128,14 @@ async fn handler(
                     return rejected(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         "InternalError",
-                        "SECRET_REMOTE_DIAGNOSTIC",
+                        "provider-head-failure test-access-secret test-session Authorization: unknown-authorization",
                     );
                 }
                 if state.fault == Fault::ConflictHead {
                     return rejected(
                         StatusCode::PRECONDITION_FAILED,
                         "PreconditionFailed",
-                        "SECRET_REMOTE_DIAGNOSTIC",
+                        "provider-head-failure test-access-secret test-session Authorization: unknown-authorization",
                     );
                 }
             }
@@ -1213,9 +1213,28 @@ async fn publication_logs_keep_conflicts_and_unknown_outcomes_distinct() {
             .any(|event| event["fields"]["event"] == "s3_request_completed"
                 && event["fields"]["operation"] == "PutObject"
                 && event["fields"]["status"] == status));
-        assert!(!serde_json::to_string(&events)
+        let failed_put = events
+            .iter()
+            .find(|event| {
+                event["fields"]["event"] == "s3_request_failed"
+                    && event["fields"]["operation"] == "PutObject"
+                    && event["fields"]["status"] == status
+            })
+            .expect("SDK failure diagnostic");
+        assert_eq!(failed_put["fields"]["sdk_error_type"], "ServiceError");
+        assert!(failed_put["fields"]["error_chain"]
+            .as_str()
             .unwrap()
-            .contains("SECRET_REMOTE_DIAGNOSTIC"));
+            .contains("provider-head-failure"));
+        for event in &events {
+            let text = serde_json::to_string(event).unwrap();
+            for secret in ["test-access", "test-session", "unknown-authorization"] {
+                assert!(!text.contains(secret), "diagnostics leaked {secret}");
+            }
+            if event["fields"]["event"] != "s3_request_failed" {
+                assert!(!text.contains("provider-head-failure"));
+            }
+        }
         server.abort();
     }
 }

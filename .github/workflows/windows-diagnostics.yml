@@ -1,0 +1,50 @@
+name: Windows S3 diagnostic CLI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@035fceb3c12fb0c6a9461b52775e16473133e591 # 1.95.0
+        with:
+          components: rustfmt
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: windows-s3-diagnostics
+      - name: Check formatting and diagnostic regressions
+        run: |
+          cargo fmt --all -- --check
+          cargo test --locked -p object-store-s3 -p ponydb
+      - name: Build the static CRT Windows CLI
+        run: python scripts/release.py build --target x86_64-pc-windows-msvc
+      - name: Package the diagnostic CLI
+        id: package
+        run: python scripts/release.py pack --target x86_64-pc-windows-msvc
+      - name: Test the unpacked executable
+        env:
+          E2E_CLI: ${{ steps.package.outputs.binary }}
+        run: python tests/cli_e2e.py --offline
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ponydb-windows-s3-diagnostics-${{ github.sha }}
+          path: |
+            release-assets/ponydb-*.zip
+            release-assets/build-*.json
+          if-no-files-found: error
+          retention-days: 7

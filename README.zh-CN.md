@@ -99,6 +99,8 @@ secret_access_key = "<secret-access-key>"
 
 更多内容见[配置](skills/ponydb/references/configuration.zh-CN.md)。
 
+排查 S3 连接失败时，设置 `PONYDB_LOGGING__LEVEL=debug` 可记录脱敏后的 SDK 错误链和生效超时。详见[运行日志](apps/cli/README.zh-CN.md#运行日志)，包含 PowerShell 用法。
+
 以下命令使用 POSIX shell；Windows 请使用对应终端的环境变量语法。
 
 ```sh

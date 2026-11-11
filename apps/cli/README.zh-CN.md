@@ -209,8 +209,20 @@ PONYDB_LOGGING__LEVEL=debug ponydb db notes execute "SELECT 1"
 PONYDB_LOGGING__LEVEL=trace PONYDB_LOGGING__FORMAT=text ponydb db notes execute "SELECT 1"
 ```
 
-Debug 记录请求 ID、数据库匿名标识、操作与阶段转换、排队和执行耗时、发布结果、数据版本及请求级 I/O/缓存汇总。Trace 额外逐条记录 pager/远程页操作、S3 请求和缓存查询、填充、淘汰、旁路。S3 日志包含实际对象 key（LIST 为前缀），含配置的 storage prefix；缓存日志使用后端相对 key。Key 中的控制字符会转义。Trace 保留完整明细，debug 不输出这些逐项事件。健康检查、ping 和进度刷新不产生请求日志。
+Debug 记录请求 ID、数据库匿名标识、操作与阶段转换、排队和执行耗时、发布结果、数据版本及请求级 I/O/缓存汇总。Trace 额外逐条记录 pager/远程页操作、S3 请求和缓存查询、填充、淘汰、旁路。S3 日志包含实际对象 key（LIST 为前缀），含配置的 storage prefix；缓存日志使用后端相对 key。Key 中的控制字符会转义。Trace 保留完整明细，debug 不输出成功操作的逐项事件。健康检查、ping 和进度刷新不产生请求日志。
 
-所有等级均不记录 SQL、参数、结果内容、metadata、description、凭据、令牌、请求头、URL、本地路径及内容校验和。对象 key 可能包含数据库名称，按约定允许输出；独立数据库标识使用私有随机盐匿名化，在同一进程内保持一致。Trace 也不会开启依赖库日志。API 错误和恢复进度独立写入 stderr；JSON 日志每行一个对象。
+所有等级均不记录 SQL、参数、结果内容、metadata、description、凭据、令牌、请求头、完整请求 URL、本地路径及内容校验和。对象 key 可能包含数据库名称，按约定允许输出；独立数据库标识使用私有随机盐匿名化，在同一进程内保持一致。Trace 也不会开启依赖库日志。API 错误和恢复进度独立写入 stderr；JSON 日志每行一个对象。
 
 汇总统计操作次数，不代表不同页或对象的数量。Pager 访问与远程页读取分别计数；S3 字节数只计成功校验的读取和已确认写入。缓存合并等待计为初次未命中；磁盘旁路包含不可用的读写尝试。请求被丢弃记录 `aborted`，不据此判断写入是否提交；未知发布结果在确认前保持 `unknown`。
+
+S3 SDK 失败时还会在 debug 或 trace 记录 `s3_request_failed`，包含 endpoint、实际 hostname/端口、环境代理选择、SDK 类型/dispatch 分类、耗时、SDK 尝试次数、生效超时、可用时的 HTTP 状态/服务端请求 ID，以及脱敏后的完整错误链。`error_chain` 是 JSON 编码数组，I/O 层包含 `io_kind` 和可用时的 `raw_os_error`。`timeout_config_observed=true` 时，缺少的超时字段表示禁用。当前 SDK 默认 connect timeout 为 3100ms，CLI 的 operation 和 operation-attempt timeout 均为 10000ms。日志保留现有超时和重试行为，脱敏与字段细节见 [S3 运行诊断](../../crates/object-store-s3/README.zh-CN.md#运行诊断)。
+
+在 Windows PowerShell 中采集失败日志：
+
+```powershell
+$env:PONYDB_LOGGING__LEVEL = "debug"
+$env:PONYDB_LOGGING__FORMAT = "json"
+.\ponydb.exe db agent_context schema --output json 2> ponydb-s3-diagnostic.log
+```
+
+手动触发 **Windows S3 diagnostic CLI** Actions 工作流，可用 Rust 1.95 构建并测试所选 ref，打包静态 CRT 的 Windows x64 MSVC CLI。运行成功后下载诊断构件，不发布正式版本。也可在 Windows 开发机依次执行 `python scripts/release.py build --target x86_64-pc-windows-msvc` 和 `python scripts/release.py pack --target x86_64-pc-windows-msvc` 生成同样的包。
