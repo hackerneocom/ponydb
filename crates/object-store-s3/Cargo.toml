@@ -9,7 +9,7 @@ rust-version.workspace = true
 tracing.workspace = true
 observability.workspace = true
 object-store-api.workspace = true
-aws-sdk-s3 = { version = "=1.82.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client"] }
+aws-sdk-s3 = { version = "=1.112.0", default-features = false, features = ["rt-tokio", "rustls", "default-https-client"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
